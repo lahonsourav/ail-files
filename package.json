@@ -35,8 +35,9 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "tsx": "^4.23.12",
+    "vite": "^8.3.5",
     "typescript": "^5",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.5"
   },
   "keywords": ["pptx", "powerpoint", "pdf", "docx", "xlsx", "slides", "templates", "ai"],
   "repository": { "type": "git", "url": "git+https://github.com/lahonsourav/ail-files.git" }
