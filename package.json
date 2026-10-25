@@ -1,17 +1,31 @@
 {
   "name": "ail-files",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Generate PowerPoint, PDF, Word and Excel files from JSON. Add your own slide layouts and themes.",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
-  "bin": { "ail-files": "./dist/cli.js" },
-  "files": ["dist", "themes", "examples", "LICENSE", "NOTICE", "README.md"],
-  "engines": { "node": ">=20" },
+  "bin": {
+    "ail-files": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "themes",
+    "examples",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
@@ -40,6 +54,18 @@
     "typescript": "^7",
     "vitest": "^5.0.5"
   },
-  "keywords": ["pptx", "powerpoint", "pdf", "docx", "xlsx", "slides", "templates", "ai"],
-  "repository": { "type": "git", "url": "git+https://github.com/lahonsourav/ail-files.git" }
+  "keywords": [
+    "pptx",
+    "powerpoint",
+    "pdf",
+    "docx",
+    "xlsx",
+    "slides",
+    "templates",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lahonsourav/ail-files.git"
+  }
 }
