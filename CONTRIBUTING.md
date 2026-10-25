@@ -2,6 +2,8 @@
 
 Thanks for helping make these files look better. The two easiest ways in are a **theme** and a **layout**.
 
+Running the tests needs Node 22.12 or newer (the test runner requires it). Using the package only needs Node 20.
+
 ## Add a theme (no code)
 
 1. Add `themes/<name>.json`. Copy an existing one. The name is lowercase letters, digits and dashes.

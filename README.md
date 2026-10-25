@@ -8,7 +8,7 @@ It is the file engine behind [Ail](https://ailighthouse.in), now open so anyone 
 
 ## Try it
 
-Needs Node 20 or newer. The PDF output also needs a Chromium browser (see [PDF](#pdf)).
+Needs Node 20 or newer to use (Node 22.12 or newer to run the tests). The PDF output also needs a Chromium browser (see [PDF](#pdf)).
 
 ```bash
 npm install
