@@ -1,0 +1,8 @@
+{
+  "name": "sunrise",
+  "description": "Warm cream with an orange accent and bold headings.",
+  "background": "FFF7ED",
+  "accent": "EA580C",
+  "fontPair": "bold",
+  "source": "builtin"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "paper",
+  "description": "Clean white with a blue accent. The default look.",
+  "background": "FFFFFF",
+  "accent": "2563EB",
+  "fontPair": "modern",
+  "source": "builtin"
+}

@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - name: Tell the PDF renderer where Chrome is
+        run: echo "PDF_CHROMIUM_PATH=${{ steps.chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
+      - run: npm test
+      - name: Smoke test the built CLI
+        run: |
+          node dist/cli.js build examples/deck.json -o /tmp/deck.pptx --theme midnight
+          node dist/cli.js build examples/report.json -o /tmp/report.docx
+          node dist/cli.js build examples/budget.json -o /tmp/budget.xlsx
+          node dist/cli.js build examples/report.json -o /tmp/report.pdf
+          node dist/cli.js import-theme /tmp/deck.pptx -o /tmp/theme.json
+          test -s /tmp/deck.pptx && test -s /tmp/report.pdf

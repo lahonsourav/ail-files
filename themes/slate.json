@@ -1,0 +1,8 @@
+{
+  "name": "slate",
+  "description": "Dark slate with an amber accent.",
+  "background": "111827",
+  "accent": "F59E0B",
+  "fontPair": "modern",
+  "source": "builtin"
+}

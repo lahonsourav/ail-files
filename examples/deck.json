@@ -1,0 +1,44 @@
+{
+  "title": "Pocket Garden",
+  "subtitle": "Seed round overview",
+  "background": "FFFFFF",
+  "accent": "2563EB",
+  "slides": [
+    {
+      "title": "The problem",
+      "icon": "warning",
+      "bullets": [
+        "Most people want fresh herbs, but supermarket packs wilt in days",
+        "Window gardens fail because watering is easy to forget",
+        "Existing smart planters cost more than a month of groceries"
+      ]
+    },
+    { "layout": "stat", "value": "3x", "caption": "Longer herb life when watering is automatic", "icon": "chart" },
+    {
+      "layout": "comparison",
+      "title": "Pocket Garden vs. a store-bought pot",
+      "left": { "heading": "Pocket Garden", "bullets": ["Waters itself", "Refill monthly", "Grows six herbs"] },
+      "right": { "heading": "Store-bought pot", "bullets": ["Needs daily care", "Dies on holiday", "Grows one herb"] }
+    },
+    {
+      "layout": "timeline",
+      "title": "Roadmap",
+      "icon": "calendar",
+      "steps": [
+        { "label": "Now", "detail": "Pilot with 200 households" },
+        { "label": "Next", "detail": "Mobile app and subscriptions for seed packs" },
+        { "label": "Later", "detail": "Retail partnerships in three cities" }
+      ]
+    },
+    {
+      "layout": "pricing",
+      "title": "Choose a plan",
+      "plans": [
+        { "name": "Starter", "price": "$19", "features": ["1 planter", "Basil starter pack"] },
+        { "name": "Home", "price": "$39", "features": ["3 planters", "Monthly seed packs", "App reminders"], "highlight": true },
+        { "name": "Kitchen", "price": "$79", "features": ["6 planters", "Monthly seed packs", "Priority support"] }
+      ]
+    },
+    { "layout": "thank_you", "subtitle": "Questions welcome.", "contact": ["hello@pocketgarden.example"] }
+  ]
+}

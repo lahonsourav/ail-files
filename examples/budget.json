@@ -1,0 +1,10 @@
+{
+  "title": "Launch Budget",
+  "sheets": [
+    {
+      "name": "Budget",
+      "headers": ["Item", "Owner", "Cost"],
+      "rows": [["Tooling", "Ops", "1200"], ["Ads", "Growth", "3500"], ["Events", "Growth", "900"]]
+    }
+  ]
+}

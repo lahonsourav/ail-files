@@ -1,0 +1,8 @@
+{
+  "name": "ocean",
+  "description": "Pale aqua with a teal accent.",
+  "background": "ECFEFF",
+  "accent": "0E7490",
+  "fontPair": "modern",
+  "source": "builtin"
+}

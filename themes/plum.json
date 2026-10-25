@@ -1,0 +1,8 @@
+{
+  "name": "plum",
+  "description": "Light lavender with a purple accent and serif type.",
+  "background": "FAF5FF",
+  "accent": "7E22CE",
+  "fontPair": "classic",
+  "source": "builtin"
+}

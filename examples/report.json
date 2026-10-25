@@ -1,0 +1,11 @@
+{
+  "title": "Quarterly Report",
+  "subtitle": "Pocket Garden, Q3",
+  "sections": [
+    { "heading": "Summary", "paragraphs": ["Orders grew steadily through the quarter, led by the Home plan.", "Support tickets fell as the app reminders launched."] },
+    { "heading": "Highlights", "bullets": ["1,240 planters shipped", "Churn down to 3.1%", "Two retail pilots signed"] },
+    { "heading": "Plans sold", "chart": { "type": "bar", "title": "Plans sold", "data": [{ "label": "Starter", "value": 420 }, { "label": "Home", "value": 610 }, { "label": "Kitchen", "value": 210 }] } },
+    { "heading": "Revenue", "table": { "headers": ["Plan", "Units", "Revenue"], "rows": [["Starter", "420", "$7,980"], ["Home", "610", "$23,790"], ["Kitchen", "210", "$16,590"]] } },
+    { "callout": { "kind": "note", "text": "Figures are illustrative sample data." } }
+  ]
+}

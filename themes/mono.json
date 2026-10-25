@@ -1,0 +1,8 @@
+{
+  "name": "mono",
+  "description": "Near-white with a black accent and bold headings.",
+  "background": "FAFAFA",
+  "accent": "111827",
+  "fontPair": "bold",
+  "source": "builtin"
+}
