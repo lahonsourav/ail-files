@@ -43,3 +43,11 @@ Open an issue first if the change alters how existing files look, so we can agre
 - `npm test` and `npm run typecheck` pass.
 - Do not add a dependency without saying why in the description.
 - Be kind. See the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Releases (maintainers)
+
+Other projects install a release tag straight from GitHub, so a release is what ships.
+
+1. In a pull request, set `version` in `package.json` (`npm version <x.y.z> --no-git-tag-version`) and merge it once CI is green.
+2. On GitHub, publish a release whose tag matches, for example `v0.1.2`, targeting `main`.
+3. Projects that depend on a tag move to the new one on their own schedule. Nothing follows `main`.
