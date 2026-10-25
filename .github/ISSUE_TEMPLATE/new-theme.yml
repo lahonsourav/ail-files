@@ -1,0 +1,28 @@
+name: Theme idea
+description: Suggest a new built-in theme, or ask for help making one.
+labels: [theme]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Name
+      description: Lowercase letters, digits and dashes, for example `sunset`.
+    validations:
+      required: true
+  - type: input
+    id: colors
+    attributes:
+      label: Background and accent colors
+      description: Six hex digits each, no `#`.
+      placeholder: "background 0B1220, accent 38BDF8"
+  - type: textarea
+    id: look
+    attributes:
+      label: The look you want
+      description: Where would it be used? Light or dark? Any fonts?
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: Pull request
+      options:
+        - label: I would like to open the pull request myself (see CONTRIBUTING.md)

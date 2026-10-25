@@ -1,0 +1,35 @@
+name: Layout idea
+description: Propose a new slide layout, or ask for help making one.
+labels: [layout]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Layout name
+      description: Lowercase letters, digits and underscores, for example `agenda`.
+    validations:
+      required: true
+  - type: textarea
+    id: when
+    attributes:
+      label: When would someone use it?
+      description: One or two sentences. This becomes the layout's description.
+    validations:
+      required: true
+  - type: textarea
+    id: json
+    attributes:
+      label: The JSON it would take
+      description: A realistic example slide.
+      render: json
+  - type: textarea
+    id: sketch
+    attributes:
+      label: Sketch or reference
+      description: Describe it, or paste an image of what it should look like.
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: Pull request
+      options:
+        - label: I would like to open the pull request myself (see CONTRIBUTING.md)
