@@ -37,7 +37,7 @@
     "@types/react-dom": "^19",
     "tsx": "^4.23.12",
     "vite": "^8.3.5",
-    "typescript": "^5",
+    "typescript": "^7",
     "vitest": "^5.0.5"
   },
   "keywords": ["pptx", "powerpoint", "pdf", "docx", "xlsx", "slides", "templates", "ai"],
