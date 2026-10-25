@@ -1,44 +1,172 @@
 {
   "title": "Pocket Garden",
-  "subtitle": "Seed round overview",
+  "subtitle": "Fresh herbs that water themselves. Seed round overview.",
   "background": "FFFFFF",
-  "accent": "2563EB",
+  "accent": "15803D",
   "slides": [
     {
-      "title": "The problem",
-      "icon": "warning",
-      "bullets": [
-        "Most people want fresh herbs, but supermarket packs wilt in days",
-        "Window gardens fail because watering is easy to forget",
-        "Existing smart planters cost more than a month of groceries"
+      "layout": "hero",
+      "title": "A Kitchen Garden That Looks After Itself",
+      "subtitle": "Three things to know about Pocket Garden.",
+      "pillars": [
+        {
+          "label": "GROW",
+          "description": "Six herbs in a planter the size of a book"
+        },
+        {
+          "label": "WATER",
+          "description": "A sensor and a tiny pump, refilled monthly"
+        },
+        {
+          "label": "ENJOY",
+          "description": "Fresh basil, mint and chives all year"
+        }
       ]
     },
-    { "layout": "stat", "value": "3x", "caption": "Longer herb life when watering is automatic", "icon": "chart" },
     {
-      "layout": "comparison",
-      "title": "Pocket Garden vs. a store-bought pot",
-      "left": { "heading": "Pocket Garden", "bullets": ["Waters itself", "Refill monthly", "Grows six herbs"] },
-      "right": { "heading": "Store-bought pot", "bullets": ["Needs daily care", "Dies on holiday", "Grows one herb"] }
+      "layout": "stats_row",
+      "title": "Why Herbs Die on the Windowsill",
+      "icon": "warning",
+      "stats": [
+        {
+          "value": "68%",
+          "label": "of store-bought herb pots are thrown away within a month"
+        },
+        {
+          "value": "3x",
+          "label": "longer herbs live when watering is automatic"
+        },
+        {
+          "value": "$4",
+          "label": "a week spent on supermarket herb packs that wilt"
+        }
+      ]
     },
     {
-      "layout": "timeline",
-      "title": "Roadmap",
-      "icon": "calendar",
+      "layout": "chart",
+      "title": "Planters in Active Use",
+      "icon": "chart",
+      "chartType": "bar",
+      "categories": [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun"
+      ],
+      "series": [
+        {
+          "name": "Active planters",
+          "values": [
+            120,
+            240,
+            410,
+            690,
+            980,
+            1340
+          ]
+        }
+      ]
+    },
+    {
+      "layout": "process",
+      "title": "Set Up in Three Steps",
+      "icon": "rocket",
+      "caption": "Most people are growing within ten minutes.",
       "steps": [
-        { "label": "Now", "detail": "Pilot with 200 households" },
-        { "label": "Next", "detail": "Mobile app and subscriptions for seed packs" },
-        { "label": "Later", "detail": "Retail partnerships in three cities" }
+        {
+          "title": "Plant",
+          "description": "Drop the seed pods into the planter and fill the tank"
+        },
+        {
+          "title": "Connect",
+          "description": "Scan the code to pair the sensor with the app"
+        },
+        {
+          "title": "Relax",
+          "description": "It waters on schedule and nudges you when to refill"
+        }
+      ]
+    },
+    {
+      "layout": "grid",
+      "title": "What Is Inside",
+      "icon": "gear",
+      "items": [
+        {
+          "title": "Smart sensor",
+          "description": "Reads soil moisture every hour",
+          "icon": "target"
+        },
+        {
+          "title": "Quiet pump",
+          "description": "Under 30 decibels, runs for seconds",
+          "icon": "gear"
+        },
+        {
+          "title": "Seed pods",
+          "description": "Delivered monthly, pre-sown and labelled",
+          "icon": "book"
+        },
+        {
+          "title": "Mobile app",
+          "description": "Reminders, tips and a growth diary",
+          "icon": "idea"
+        }
       ]
     },
     {
       "layout": "pricing",
-      "title": "Choose a plan",
+      "title": "Choose a Plan",
       "plans": [
-        { "name": "Starter", "price": "$19", "features": ["1 planter", "Basil starter pack"] },
-        { "name": "Home", "price": "$39", "features": ["3 planters", "Monthly seed packs", "App reminders"], "highlight": true },
-        { "name": "Kitchen", "price": "$79", "features": ["6 planters", "Monthly seed packs", "Priority support"] }
+        {
+          "name": "Starter",
+          "price": "$19",
+          "period": "/month",
+          "features": [
+            "1 planter",
+            "Basil starter pack",
+            "Email support"
+          ]
+        },
+        {
+          "name": "Home",
+          "price": "$39",
+          "period": "/month",
+          "features": [
+            "3 planters",
+            "Monthly seed pods",
+            "App reminders",
+            "Priority support"
+          ],
+          "highlight": true
+        },
+        {
+          "name": "Kitchen",
+          "price": "$79",
+          "period": "/month",
+          "features": [
+            "6 planters",
+            "Monthly seed pods",
+            "Chef recipe cards",
+            "Priority support"
+          ]
+        }
       ]
     },
-    { "layout": "thank_you", "subtitle": "Questions welcome.", "contact": ["hello@pocketgarden.example"] }
+    {
+      "layout": "quote",
+      "quote": "I forgot to water it for two weeks and the basil is still thriving.",
+      "author": "A pilot household, Leeds",
+      "icon": "celebration"
+    },
+    {
+      "layout": "thank_you",
+      "subtitle": "Questions are welcome.",
+      "contact": [
+        "hello@pocketgarden.example"
+      ]
+    }
   ]
 }
