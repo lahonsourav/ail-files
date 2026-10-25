@@ -50,39 +50,51 @@ export const pricing = defineLayout<PricingData>({
   render({ slide, colors, helpers }, data) {
     helpers.chrome(data.title);
     const n = data.plans.length;
-    const gap = 0.25;
-    const margin = 0.6;
+    const gap = 0.3;
+    const margin = 0.7;
     const cardW = (helpers.slideWidth - margin * 2 - gap * (n - 1)) / n;
-    const top = helpers.contentTop + 0.1;
-    const cardH = Math.min(helpers.contentBottom - top, 3.1);
+    const top = helpers.contentTop + 0.35;
+    const cardH = helpers.contentBottom - top - 0.1;
+    const pad = 0.3;
 
     data.plans.forEach((plan, i) => {
       const x = margin + i * (cardW + gap);
       slide.addShape("roundRect", {
-        x, y: top, w: cardW, h: cardH, rectRadius: 0.1,
-        fill: { color: colors.accent, transparency: plan.highlight ? 80 : 94 },
-        line: plan.highlight ? { color: colors.accent, width: 1.5 } : { type: "none" },
+        x, y: top, w: cardW, h: cardH, rectRadius: 0.12,
+        fill: { color: colors.accent, transparency: plan.highlight ? 82 : 94 },
+        line: plan.highlight ? { color: colors.accent, width: 2 } : { type: "none" },
       });
+      if (plan.highlight) {
+        // The badge text sits on the accent color, so it uses the background color, which the engine keeps readable against the accent.
+        slide.addShape("roundRect", {
+          x: x + cardW / 2 - 0.65, y: top - 0.17, w: 1.3, h: 0.34, rectRadius: 0.17,
+          fill: { color: colors.accent }, line: { type: "none" },
+        });
+        slide.addText("MOST POPULAR", {
+          x: x + cardW / 2 - 0.65, y: top - 0.17, w: 1.3, h: 0.34,
+          fontSize: 9, bold: true, align: "center", valign: "middle", color: colors.background, fontFace: colors.bodyFont, isTextBox: true, margin: 0,
+        });
+      }
       slide.addText(helpers.clean(plan.name), {
-        x: x + 0.2, y: top + 0.15, w: cardW - 0.4, h: 0.4,
-        fontSize: 16, bold: true, color: colors.titleColor, fontFace: colors.headingFont, isTextBox: true, margin: 0,
+        x: x + pad, y: top + 0.3, w: cardW - pad * 2, h: 0.4,
+        fontSize: 18, bold: true, color: colors.titleColor, fontFace: colors.headingFont, isTextBox: true, margin: 0,
       });
       slide.addText(
         [
-          { text: helpers.clean(plan.price), options: { fontSize: 28, bold: true, color: colors.accent } },
-          ...(plan.period ? [{ text: ` ${helpers.clean(plan.period)}`, options: { fontSize: 12, color: colors.bodyColor } }] : []),
+          { text: helpers.clean(plan.price), options: { fontSize: 38, bold: true, color: colors.accent } },
+          ...(plan.period ? [{ text: ` ${helpers.clean(plan.period)}`, options: { fontSize: 13, color: colors.bodyColor } }] : []),
         ],
-        { x: x + 0.2, y: top + 0.55, w: cardW - 0.4, h: 0.6, fontFace: colors.headingFont, isTextBox: true, margin: 0 },
+        { x: x + pad, y: top + 0.75, w: cardW - pad * 2, h: 0.8, valign: "middle", fontFace: colors.headingFont, isTextBox: true, margin: 0 },
       );
       if (plan.features.length) {
         slide.addText(
           plan.features.map((f, k) => ({
             text: helpers.clean(f),
-            options: { bullet: true, breakLine: k < plan.features.length - 1, paraSpaceAfter: 4 },
+            options: { bullet: { code: "2713" }, breakLine: k < plan.features.length - 1, paraSpaceAfter: 9 },
           })),
           {
-            x: x + 0.2, y: top + 1.25, w: cardW - 0.4, h: cardH - 1.4,
-            fontSize: 11, color: colors.bodyColor, fontFace: colors.bodyFont, valign: "top", isTextBox: true, margin: 0,
+            x: x + pad, y: top + 1.75, w: cardW - pad * 2, h: cardH - 1.95,
+            fontSize: 13, color: colors.bodyColor, fontFace: colors.bodyFont, valign: "top", isTextBox: true, margin: 0,
           },
         );
       }

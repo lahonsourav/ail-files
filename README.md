@@ -4,7 +4,7 @@ Turn JSON into **PowerPoint, PDF, Word and Excel** files. Add your own slide lay
 
 It is the file engine behind [Ail](https://ailighthouse.in), now open so anyone can improve how the files look.
 
-![A few slides made by ail-files](gallery/slides.png)
+![Four slides from the example deck: a hero slide, key stats, a chart and a pricing table](gallery/overview.png)
 
 ## Try it
 
@@ -64,6 +64,8 @@ A theme is a small JSON file in [`themes/`](themes): a background, an accent, an
 { "name": "midnight", "description": "Deep navy with a bright sky-blue accent.", "background": "0B1220", "accent": "38BDF8", "fontPair": "modern" }
 ```
 
+![The same slide in four themes](gallery/themes.png)
+
 Text colors are never part of a theme. The engine picks them from the background so text is always readable, so a theme cannot make a deck unreadable.
 
 ### Make a theme from a PowerPoint file
@@ -79,6 +81,8 @@ Importing a theme does not import the template's slide designs. A new look for a
 ## PDF
 
 PDFs are drawn as HTML and printed by a headless Chromium. Set `PDF_CHROMIUM_PATH` to a Chromium or Chrome binary, or have `chromium` on your `PATH`.
+
+![A one-page report made from examples/report.json](gallery/report.png)
 
 The page is locked down. JavaScript is off, and every request except `data:` and `about:` is refused, so a document cannot make the renderer fetch a file or call a server. This is tested against a local server in `test/pdfSecurity.test.ts`. See [SECURITY.md](SECURITY.md).
 
