@@ -17,6 +17,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+      - name: Build the editor playground page
+        run: npx vite build --config playground/vite.config.ts --outDir /tmp/playground --emptyOutDir
       - uses: browser-actions/setup-chrome@v2
         id: chrome
       - name: Tell the PDF renderer where Chrome is

@@ -60,6 +60,31 @@ const bytes = await buildPptx(deck, { images: images ?? undefined, logo: logo ??
 
 A slide names a picture by id: `{ "layout": "image", "image": "img1", "caption": "Our lighthouse" }`, `{ "layout": "photos", "items": [{ "image": "img1" }, { "image": "img2" }] }` or `{ "layout": "before_after", "before": { "image": "img1" }, "after": { "image": "img2" } }`. A deck can also set `"backgroundImage": "img3"` to use one picture behind every slide, and a free-form (`canvas`) slide can place pictures and give each piece of text its own `"color"`. A slide that names a picture that was not passed in says "Picture not available" instead of leaving a silent gap. `recordDeck(deck)` returns what was drawn on each slide as data, for building a preview in a browser. `features` lists the options this release has (`pptx.logo`, `pptx.images`).
 
+## The editor
+
+The editor you see in Ail is open too, so anyone can improve how decks are edited. It comes in two parts.
+
+- **`ail-files/edit`** is plain code, no screen and no server: add, move, copy and delete slides, change a field, move and resize the parts of a free-form slide, undo history, the three-way merge for two people editing one deck, the conversion of a slide to free-form, the "ask the model to change this slide" prompt and reply parser, and the prompts that make a deck, PDF, Word or Excel file from a chat.
+- **`ail-files/editor`** is the React editor: the slide strip, the live preview, a form for every layout, deck settings, the picture and look panels, drag handles on the slide, the ask box, undo and redo. It keeps no storage and no account. Everything that does comes from a `DeckEditorHost` you give it:
+
+```tsx
+import { DeckEditor, type DeckEditorHost } from "ail-files/editor";
+import "ail-files/editor-tokens.css"; // the ten --ds-* colours it reads; or define the same variables in your own theme
+
+const host: DeckEditorHost = {
+  preview: async ({ deck, images, logo }) => (await fetch("/preview", { method: "POST", body: JSON.stringify({ deck, images, logo }) })).json(), // what recordDeck returns
+  save: async (deck, baseVersion) => ({ status: "saved", version: baseVersion + 1 }),
+  ask: async (args) => ({ error: "not connected" }),
+  freeForm: async (args) => ({ error: "not connected" }),
+  download: async ({ deck }) => ({ ok: false, error: "not connected" }),
+  // optional: flush, poll, onRemoteChange, versions
+};
+
+<DeckEditor initialDeck={deck} initialVersion={1} host={host} pictures={[]} pictureMode="use" logo={{ enabled: false, corner: "top-right", round: false }} />;
+```
+
+If you use Tailwind, add `@source "../node_modules/ail-files/dist/editor";` to your CSS so it can see the editor's class names. `back`, `headerActions`, `notice`, `dialogs`, `busyMark` and `labels` (for example `assistantName`) let a program add its own buttons, dialogs and wording around the editor. The editor moves with a few shared behaviours (a pressed button sinks and springs back, a dragged slide lifts while the others slide aside, what opens eases out, a success tick draws itself); a program that wants the button press everywhere mounts `<PressEffect />` once, as the playground does. **To see it without writing a program,** run `npm install` and `npm run editor` in this repository and open http://localhost:5173: the editor on a page, with a small backend in [`playground/`](playground) that draws, saves, converts and downloads (set `ANTHROPIC_API_KEY` to try the ask box too). The editing code and the editor are tested here (`test/editor.test.ts` renders the whole editor from a stand-in host). Where each part lives, and the rules for changing it, are in [CONTRIBUTING.md](CONTRIBUTING.md#improve-the-editor).
+
 ## Slide layouts
 
 Built in: `bullets`, `stat`, `comparison`, `quote`, `section`, `table`, `chart`, `grid`, `ranked`, `timeline`, `columns`, `problem_solution`, `team`, `iconlist`, `funnel`, `stats_row`, `process`, `recommendation`, `canvas`, `thank_you`, `presenter`, `hero`, `tiers`, `recap`, `glossary`, `roadmap`, `matrix`, `flowchart`, `calendar`, `gallery`, `quote_carousel`, `advanced_table`, `image`, `photos`, `before_after`.

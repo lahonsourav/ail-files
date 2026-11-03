@@ -10,10 +10,14 @@ import { placedPictures, setSlideOption, readableOn } from "../edit/slideOptions
 import LockedParts from "./LockedParts.js";
 import FreeFormNote from "./FreeFormNote.js";
 import SlideAsk from "./SlideAsk.js";
+import SuccessTick from "./SuccessTick.js";
+import { useFlip } from "./useFlip.js";
+import { MOTION, previewOrder } from "./motion.js";
 import { mergeDecks } from "../edit/deckMerge.js";
 import { moveDrawn } from "../edit/recordedMove.js";
 import SlideHandles, { type BoxRef } from "./SlideHandles.js";
 import ColorField from "./ColorField.js";
+import PictureSelect from "./PictureSelect.js";
 import { addSlide, canRedo, canUndo, commit, createHistory, deleteSlide, duplicateSlide, LAYOUT_LABELS, layoutOf, moveSlide, NEW_SLIDE_TEMPLATES, newSlide, redo, setAt, undo, updateSlide, removeAt, insertAt, movableBoxes, lockedParts, setBox, type Box } from "../edit/deckEdit.js";
 import type { FontPairKey, SlideContent, SlideDeck } from "../pptx/presentationBuilder.js";
 import type { RecordedDeck } from "../pptx/pptRecorded.js";
@@ -108,6 +112,10 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const [addOpen, setAddOpen] = useState(false);
   const [addAfter, setAddAfter] = useState<number | null>(null); // the slide whose templates are showing under it in the strip
   const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null); // where the dragged slide would land if let go now: the others slide to make room
+  const [savedCount, setSavedCount] = useState(0); // how many saves have finished, so the tick by "Saved" plays again for each
+  const strip = useRef<HTMLDivElement>(null);
+  useFlip(strip);
   const [pictureError, setPictureError] = useState("");
   // The box picked on the slide (a free-form element or a placed picture), for the slide it was picked on.
   const [pickedBox, setPickedBox] = useState<(BoxRef & { slide: number }) | null>(null);
@@ -125,6 +133,8 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     const chosen = pictureMode !== "none" ? images.find((i) => i.background && !i.backgroundOff) : undefined;
     return chosen && !deck.backgroundImage ? { ...deck, backgroundImage: chosen.id } : deck;
   }, [deck, images, pictureMode]);
+  // The pictures as the pickers show them: with a small copy of each, so a person chooses by what it looks like.
+  const choices = useMemo(() => images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height, thumb: i.dataUrl })), [images]);
   const imageMeta = useMemo(() => Object.fromEntries(images.map((i) => [i.id, { width: i.width, height: i.height, label: i.label }])), [images]);
   const pixels = useMemo(() => {
     const out: Record<string, string> = Object.fromEntries(images.map((i) => [i.id, i.dataUrl]));
@@ -187,6 +197,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
             savedRef.current = toSave;
             setSavedDeck(toSave);
             setSaveError("");
+            setSavedCount((n) => n + 1);
           } else if (result.status === "conflict") {
             const data = result;
             // Someone saved first (another device, a collaborator): keep both sets of changes when they touch different parts.
@@ -474,6 +485,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     setVersions(null);
   }
 
+  const order = previewOrder(deck.slides.length, dragFrom, dragOver); // the strip's order, with the dragged slide already in its new place
   const status = conflict ? "Changed somewhere else" : saveError ? "Not saved" : saving ? "Saving…" : dirty ? "Unsaved changes" : "Saved";
   const shownSlide = recorded?.slides[(sel === "deck" ? 0 : sel + offset)];
 
@@ -482,7 +494,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
       <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shrink-0">
         {back}
         <h1 className="text-sm font-semibold truncate min-w-0 flex-1">{deck.title ?? "Untitled deck"}</h1>
-        <span role="status" aria-live="polite" className={`hidden sm:inline text-xs ${saveError || conflict ? "text-red-500" : "text-[var(--ds-text-muted)]"}`}>{status}</span>
+        <span role="status" aria-live="polite" className={`hidden sm:inline text-xs ${saveError || conflict ? "text-red-500" : "text-[var(--ds-text-muted)]"}`}>{status === "Saved" && savedCount > 0 && <SuccessTick key={savedCount} size={13} className="mr-1 inline-block align-[-2px]" />}{status}</span>
         <button type="button" onClick={() => setHist((h) => undo(h))} disabled={!canUndo(hist)} className={barButton} aria-label="Undo">Undo</button>
         <button type="button" onClick={() => setHist((h) => redo(h))} disabled={!canRedo(hist)} className={barButton} aria-label="Redo">Redo</button>
         {host.versions && <button type="button" onClick={openVersions} className={`${barButton} hidden sm:inline-block`}>Versions</button>}
@@ -525,7 +537,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
           key={`bar${sel}`}
           slide={deck.slides[sel]}
           deck={effective}
-          pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height, thumb: i.dataUrl }))}
+          pictures={choices}
           index={sel}
           count={deck.slides.length}
           layout={layoutOf(deck.slides[sel])}
@@ -543,33 +555,60 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
       <main className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-[200px_minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)]">
         {/* Slides */}
         <aside aria-label="Slides" className="lg:border-r border-[var(--ds-border-muted)] lg:overflow-y-auto bg-[var(--ds-bg-surface)]">
-          <div className="flex lg:block gap-2 p-2 overflow-x-auto lg:overflow-x-visible">
+          <div
+            ref={strip}
+            // The whole strip takes the drop (not only a slide), so letting go in a gap between two slides still counts.
+            onDragEnter={(e) => dragFrom !== null && e.preventDefault()}
+            onDragOver={(e) => dragFrom !== null && e.preventDefault()}
+            onDrop={(e) => {
+              if (dragFrom === null) return;
+              e.preventDefault();
+              if (dragOver !== null && dragFrom !== dragOver) {
+                change(moveSlide(deck, dragFrom, dragOver));
+                setSelected(dragOver);
+              }
+              setDragFrom(null);
+              setDragOver(null);
+            }}
+            className="relative flex lg:block gap-2 p-2 overflow-x-auto lg:overflow-x-visible"
+          >
             {deck.title && (
               <button type="button" onClick={() => setSelected("deck")} aria-pressed={sel === "deck"} className={`shrink-0 w-36 lg:w-full text-left rounded-lg border p-1 mb-0 lg:mb-2 ${sel === "deck" ? "border-[var(--ds-accent)]" : "border-[var(--ds-border-muted)]"}`}>
                 {recorded?.slides[0] ? <SlideStage slide={recorded.slides[0]} assets={recorded.assets} images={pixels} logoRound={logo.round} /> : <div className="aspect-video bg-[var(--ds-bg-elevated)]" />}
                 <span className="block text-[11px] mt-1 px-1 text-[var(--ds-text-muted)]">Cover and deck settings</span>
               </button>
             )}
-            {deck.slides.map((slide, i) => {
+            {order.map((i) => {
+              const slide = deck.slides[i];
               const rs = recorded?.slides[i + offset];
+              const lifted = dragFrom === i;
               return (
                 <Fragment key={i}>
                 <button
                   type="button"
                   draggable
-                  onDragStart={() => setDragFrom(i)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => {
-                    if (dragFrom !== null && dragFrom !== i) {
-                      change(moveSlide(deck, dragFrom, i));
-                      setSelected(i);
-                    }
+                  data-flip-id={i}
+                  onDragStart={(e) => {
+                    setDragFrom(i);
+                    setDragOver(i);
+                    // The slide itself is what moves (lifted, in the strip), so the browser's own ghost picture is not wanted.
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", String(i));
+                    e.dataTransfer.setDragImage(new Image(), 0, 0);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (dragFrom !== null && i !== dragFrom) setDragOver(order.indexOf(i)); // where this slide sits now is where the dragged one goes
+                  }}
+                  onDragEnd={() => {
                     setDragFrom(null);
+                    setDragOver(null);
                   }}
                   onClick={() => setSelected(i)}
                   aria-pressed={sel === i}
                   aria-label={`Slide ${i + 1}, ${LAYOUT_LABELS[layoutOf(slide)] ?? layoutOf(slide)}`}
-                  className={`shrink-0 w-36 lg:w-full text-left rounded-lg border p-1 mb-0 lg:mb-2 ${sel === i ? "border-[var(--ds-accent)] ring-1 ring-[var(--ds-accent)]" : "border-[var(--ds-border-muted)]"}`}
+                  style={lifted ? { scale: String(MOTION.liftScale) } : undefined}
+                  className={`shrink-0 w-36 lg:w-full text-left rounded-lg border p-1 mb-0 lg:mb-2 transition-[scale,box-shadow] duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${lifted ? "relative z-10 shadow-xl cursor-grabbing" : ""} ${sel === i ? "border-[var(--ds-accent)] ring-1 ring-[var(--ds-accent)]" : "border-[var(--ds-border-muted)]"}`}
                 >
                   {rs ? <SlideStage slide={rs} assets={recorded!.assets} images={pixels} logoRound={logo.round} /> : <div className="aspect-video bg-[var(--ds-bg-elevated)]" />}
                   <span className="block text-[11px] mt-1 px-1 text-[var(--ds-text-muted)] truncate">{i + 1} · {LAYOUT_LABELS[layoutOf(slide)] ?? layoutOf(slide)}</span>
@@ -579,13 +618,16 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                     <button type="button" onClick={() => setAddAfter((o) => (o === i ? null : i))} aria-expanded={addAfter === i} className="w-full px-3 py-1.5 rounded-lg border border-dashed border-[var(--ds-accent)] text-xs font-medium text-[var(--ds-accent)] hover:bg-[var(--ds-bg-hover)]">
                       {addAfter === i ? "Close templates" : `+ Add slide after ${i + 1}`}
                     </button>
-                    {addAfter === i && (
-                      <div role="group" aria-label="Slide templates" className="mt-1.5 grid grid-cols-2 gap-1.5">
-                        {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
-                          <button key={layout} type="button" onClick={() => add(layout)} className="text-left text-[11px] leading-tight px-2 py-2 rounded-md border border-[var(--ds-border-muted)] bg-[var(--ds-bg-primary)] hover:border-[var(--ds-accent)]">{t.label}</button>
-                        ))}
+                    {/* Opens by growing, ease-out, 350 ms: fast first, then slow. */}
+                    <div data-open={addAfter === i} inert={addAfter !== i} className="grid grid-rows-[0fr] data-[open=true]:grid-rows-[1fr] opacity-0 data-[open=true]:opacity-100 transition-[grid-template-rows,opacity] duration-[350ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none">
+                      <div className="min-h-0 overflow-hidden">
+                        <div role="group" aria-label="Slide templates" className="mt-1.5 grid grid-cols-2 gap-1.5">
+                          {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
+                            <button key={layout} type="button" onClick={() => add(layout)} className="text-left text-[11px] leading-tight px-2 py-2 rounded-md border border-[var(--ds-border-muted)] bg-[var(--ds-bg-primary)] hover:border-[var(--ds-accent)]">{t.label}</button>
+                          ))}
+                        </div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
                 </Fragment>
@@ -639,7 +681,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               <SlideInsert
                 key={`ins${sel}`}
                 slide={deck.slides[sel]}
-                pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))}
+                pictures={choices}
                 onChange={(next: SlideContent, key) => change(updateSlide(deck, sel, next), `${sel}.${key}`)}
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
@@ -668,20 +710,20 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                   <option value="bold">Bold</option>
                 </select>
               </label>
-              <label className="block space-y-1">
+              <div className="block space-y-1">
                 <span className="text-xs font-medium text-[var(--ds-text-secondary)]">Background picture</span>
-                <select
+                <PictureSelect
+                  ariaLabel="Background picture"
                   value={deck.backgroundImage ?? ""}
-                  onChange={(e) => setDeckField("backgroundImage", e.target.value || undefined)}
-                  className={inputClass}
-                >
-                  <option value="">{labels.defaultPicture ?? "From the picture settings (default)"}</option>
-                  <option value="none">None</option>
-                  {images.map((i) => (
-                    <option key={i.id} value={i.id}>{i.id} · {i.label}</option>
-                  ))}
-                </select>
-              </label>
+                  buttonClassName="!text-sm !px-2.5 !py-1.5"
+                  options={[
+                    { value: "", label: labels.defaultPicture ?? "From the picture settings (default)" },
+                    { value: "none", label: "None" },
+                    ...choices.map((i) => ({ value: i.id, label: `${i.id} · ${i.label}`, thumb: i.thumb })),
+                  ]}
+                  onChange={(id) => setDeckField("backgroundImage", id || undefined)}
+                />
+              </div>
               <div className="space-y-2">
                 <span className="text-xs font-medium text-[var(--ds-text-secondary)]">Your pictures ({images.length} of 6)</span>
                 <p className="text-[11px] text-[var(--ds-text-muted)]">{isEditor ? (labels.readOnlyPicturesNote ?? "These pictures belong to someone else. They can be used here but not added or removed.") : (labels.picturesNote ?? "Used on picture slides and as the background.")}</p>
@@ -712,7 +754,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               <ElementPanel
                 key={`el${current}.${pickedNow.index}`}
                 slide={deck.slides[current]}
-                pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))}
+                pictures={choices}
                 index={pickedNow.index}
                 defaultTextColor={readableOn(((deck.slides[current] as unknown as { background?: unknown }).background as string | undefined) ?? effective.background ?? "FFFFFF")}
                 onSelect={(index) => setPickedBox({ slide: current, list: "elements", index })}
@@ -723,7 +765,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               <PicturePanel
                 key={`pic${current}.${pickedNow.index}`}
                 slide={deck.slides[current]}
-                pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))}
+                pictures={choices}
                 index={pickedNow.index}
                 onBack={() => setPickedBox(null)}
                 onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)}
@@ -731,7 +773,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
             ) : (
             <>
               <h2 className="text-sm font-semibold">Slide {current + 1}</h2>
-              <SlideForm key={current} slide={deck.slides[current]} pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))} activeElement={activeBox?.list === "elements" ? activeBox.index : null} onSelectElement={(index) => setPickedBox({ slide: current, list: "elements", index })} onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)} />
+              <SlideForm key={current} slide={deck.slides[current]} pictures={choices} activeElement={activeBox?.list === "elements" ? activeBox.index : null} onSelectElement={(index) => setPickedBox({ slide: current, list: "elements", index })} onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)} />
             </>
             )
           )}
@@ -741,7 +783,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               key={`look${sel}`}
               slide={deck.slides[sel]}
               deck={effective}
-              pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))}
+              pictures={choices}
               onChange={(next: SlideContent, key) => change(updateSlide(deck, sel, next), `${sel}.${key}`)}
               activePicture={activeBox?.list === "pictures" ? activeBox.index : null}
               onSelectPicture={(index) => setPickedBox({ slide: sel, list: "pictures", index })}

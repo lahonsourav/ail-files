@@ -3,6 +3,7 @@
 import type { SlideContent, SlideDeck } from "../pptx/presentationBuilder.js";
 import type { Box } from "../edit/deckEdit.js";
 import type { PictureChoice } from "./SlideForm.js";
+import PictureSelect from "./PictureSelect.js";
 import ColorField from "./ColorField.js";
 import PositionFields from "./PositionFields.js";
 import { placedPictures, setPlacedPictures, setSlideOption, hasSlideOptions, readableOn, sharedTextColor, withAllTextColor } from "../edit/slideOptionsEdit.js";
@@ -23,13 +24,18 @@ function PictureCard({ i, placed, pictures, setPlaced, active, onFocus }: { i: n
       className={`rounded-md border p-1.5 space-y-1.5 bg-[var(--ds-bg-elevated)] ${active ? "border-[var(--ds-accent)]" : "border-[var(--ds-border-muted)]"}`}
     >
               <div className="flex items-center gap-1.5">
-                <select aria-label={`Picture ${i + 1}`} value={p.image} onChange={(e) => setPlaced(placed.map((x, j) => (j === i ? { ...x, image: e.target.value } : x)), `pictures.${i}.image`)} className={inputClass}>
-                  {!pictures.some((x) => x.id === p.image) && <option value={p.image}>{p.image} (picture not found)</option>}
-                  {pictures.map((x) => (
-                    <option key={x.id} value={x.id}>{x.id} · {x.label}</option>
-                  ))}
-                </select>
-                <button type="button" aria-label={`Remove picture ${i + 1}`} onClick={() => setPlaced(placed.filter((_, j) => j !== i), `pictures.${i}:remove`)} className="shrink-0 w-7 h-7 rounded-md text-xs text-[var(--ds-text-muted)] hover:text-[var(--ds-text-primary)] hover:bg-[var(--ds-bg-hover)]">×</button>
+                <PictureSelect
+                  ariaLabel={`Picture ${i + 1}`}
+                  className="flex-1 min-w-0"
+                  buttonClassName="!text-sm !px-2.5 !py-1.5"
+                  value={p.image}
+                  options={[
+                    ...(!pictures.some((x) => x.id === p.image) ? [{ value: p.image, label: `${p.image} (picture not found)` }] : []),
+                    ...pictures.map((x) => ({ value: x.id, label: `${x.id} · ${x.label}`, thumb: x.thumb })),
+                  ]}
+                  onChange={(id) => setPlaced(placed.map((x, j) => (j === i ? { ...x, image: id } : x)), `pictures.${i}.image`)}
+                />
+                <button type="button" aria-label={`Remove picture ${i + 1}`} onClick={() => setPlaced(placed.filter((_, j) => j !== i), `pictures.${i}:remove`)} className="shrink-0 px-2.5 py-1.5 rounded-md text-xs font-medium border border-red-500/50 text-red-500 hover:bg-red-500/10">Remove</button>
               </div>
               <PositionFields label={`Picture ${i + 1}`} box={p} onChange={(b: Box) => setPlaced(placed.map((x, j) => (j === i ? { ...x, ...b } : x)), `pictures.${i}.box`)} />
               <input aria-label={`Picture ${i + 1} caption`} placeholder="Caption (optional)" value={p.caption ?? ""} onChange={(e) => setPlaced(placed.map((x, j) => (j === i ? { ...x, caption: e.target.value || undefined } : x)), `pictures.${i}.caption`)} className={inputClass} />
