@@ -14,6 +14,8 @@ export * from "./browser.js";
 
 // PowerPoint
 export { buildPptx, recordDeck, slidePalette, FONT_PAIRS, DEFAULT_FONT_PAIR } from "./pptx/presentationBuilder.js";
+// The colour and size rules the builder uses, for a program that turns one kind of slide into another (the Ail app's "make it free-form").
+export { blendHex, contrastingTextColor, CANVAS_TEXT_SIZE_PT, GRID_SIZE, SNAP_THRESHOLD } from "./pptx/presentationBuilder.js";
 
 // The user's own logo and pictures. Both are export-time options (`buildPptx(deck, { logo, images })`), prepared first with
 // `prepareLogo` / `prepareImages` (checks the type and size, and reads the pixel size), and a deck names a picture by id (img1, img2...).
