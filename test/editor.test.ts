@@ -23,7 +23,8 @@ describe("ail-files/editor", () => {
     expect(html).toContain("Undo");
     expect(html).toContain("Download");
     expect(html).toContain("Drawing your slide"); // the host has not drawn anything yet
-    expect(html).toContain("Ask Ail to change this slide");
+    expect(html).toContain("Ask the assistant to change this slide");
+    expect(html).not.toContain("Ask Ail");
     expect(html).toContain(deck.slides.length ? "Add slide after" : "");
   });
 
@@ -34,6 +35,12 @@ describe("ail-files/editor", () => {
     expect(html).toContain("Versions");
     expect(html).toContain("Collab");
     expect(html).toContain("A dialog");
+  });
+
+  it("uses the name the program gives its assistant", () => {
+    const html = renderToString(createElement(DeckEditor, { ...props, labels: { assistantName: "Ail" } }));
+    expect(html).toContain("Ask Ail to change this slide");
+    expect(html).not.toContain("the assistant");
   });
 
   it("does not mention the Ail app's storage or settings screens unless the program passes that wording in", () => {
