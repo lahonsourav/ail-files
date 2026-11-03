@@ -3,6 +3,14 @@ import { stripMarkdownLine } from "../shared/exportDoc.js";
 import { fitFontSize, avgEmForFont } from "./textFit.js";
 import { buildIconCache, getIconPng, type IconCache } from "./pptIcons.js";
 import { getLayout, type LayoutHelpers } from "./layoutRegistry.js";
+import { placeLogo, type LogoPlacement, type PptLogo } from "./pptLogo.js";
+import { isImageId, type PptImage } from "./pptImages.js";
+import { softenedBackground, BACKGROUND_SCRIM } from "./pptBackground.js";
+import { DeckRecorder } from "./pptRecorder.js";
+import type { RecordedDeck } from "./pptRecorded.js";
+import { CANVAS_TEXT_SIZE_PT } from "./deckConstants.js";
+import { blendHex, contrastingTextColor, ensureContrast, relativeLuminance, hexToRgbTuple, rgbToHex, rgbToHsl, hslToRgb } from "./colorMath.js";
+export { blendHex, contrastingTextColor } from "./colorMath.js";
 
 // Small built-in illustration set — a fixed enum for the same reason
 // layout/color are: the model picks from a known list rather than inventing
@@ -573,12 +581,64 @@ export interface GalleryItem {
   description?: string;
   caption?: string;
   icon?: IllustrationIcon;
+  image?: string; // id of one of the user's own pictures (img1...), see lib/pptImages.ts
+  placeholder?: string; // no picture yet: an empty box with this text, for the user to fill in PowerPoint
 }
 export interface GallerySlide {
   layout: "gallery";
   title?: string;
   items: GalleryItem[]; // 2-4 images with descriptions
   arrangement?: "grid" | "horizontal" | "vertical"; // Gallery arrangement, default "horizontal"
+  icon?: IllustrationIcon;
+  notes?: string;
+  tone?: SlideTone;
+}
+
+// One of the user's own pictures, with an optional caption and side text. `image` is an id (img1...)
+// from the pictures the user added in the PPT settings; the picture itself is passed to buildPptx
+// in `opts.images`. "full" fills the content area; "left"/"right" put the picture on one side
+// and `bullets` on the other (no bullets means "full").
+export type ImagePlacement = "full" | "left" | "right" | "top" | "bottom" | "background";
+export interface ImageSlide {
+  layout: "image";
+  title?: string;
+  image?: string; // absent: an empty placeholder box (see `placeholder`)
+  placeholder?: string; // what the empty box says, e.g. "Photo of the team"
+  caption?: string;
+  bullets?: string[];
+  placement?: ImagePlacement;
+  icon?: IllustrationIcon;
+  notes?: string;
+  tone?: SlideTone;
+}
+
+// One picture in a layout of several: one of the user's pictures by id, or an empty placeholder box, with a
+// caption below it (the caption falls back to the name the user gave the picture).
+export interface PhotoItem {
+  image?: string;
+  placeholder?: string;
+  caption?: string;
+}
+// Several pictures with no cards around them. pair: two side by side; trio: one large and two stacked; quad: 2 x 2;
+// strip: three or four in a row. Defaults from the number of pictures.
+export type PhotoArrangement = "pair" | "trio" | "quad" | "strip";
+export interface PhotosSlide {
+  layout: "photos";
+  title?: string;
+  items: PhotoItem[]; // 2-4
+  arrangement?: PhotoArrangement;
+  icon?: IllustrationIcon;
+  notes?: string;
+  tone?: SlideTone;
+}
+// Two pictures to compare, each under a label chip ("Before" and "After" unless the slide says otherwise).
+export interface BeforeAfterSlide {
+  layout: "before_after";
+  title?: string;
+  before: PhotoItem;
+  after: PhotoItem;
+  beforeLabel?: string;
+  afterLabel?: string;
   icon?: IllustrationIcon;
   notes?: string;
   tone?: SlideTone;
@@ -678,6 +738,8 @@ export interface CanvasTextElement extends CanvasBox {
   text: string;
   fontRole?: FontRole;
   textRole?: TextRole;
+  /** The text's own colour as a 6 digit hex (no #), which wins over textRole: for when the person (or Ail, asked for it) wants a colour the roles do not give, white for instance. */
+  color?: string;
   // A discrete size token, not a raw point size — lets fitFontSize (see
   // lib/textFit.ts) shrink from a known starting point when text overflows
   // its box, and keeps every canvas text element's scale consistent with
@@ -701,6 +763,8 @@ export interface CanvasIconElement extends CanvasBox {
   type: "icon";
   icon: IllustrationIcon;
   badge?: boolean; // default true — themed circle behind the glyph
+  /** Drawn in the colour that reads on the accent colour, for an icon placed over an accent-filled shape. */
+  onAccent?: boolean;
 }
 
 export interface CanvasChartElement extends CanvasBox {
@@ -711,6 +775,17 @@ export interface CanvasChartElement extends CanvasBox {
   series?: ChartSeries[];
   title?: string;
   style?: ChartStyle;
+}
+
+// One of the user's own pictures (by id, img1...) or an empty placeholder box, placed on a canvas slide. The box
+// includes the room for the caption, which sits directly under the picture; the picture is shown whole inside the
+// box, keeping its shape. fit "cover" fills the box edge to edge instead (cropped to fit, no caption): a background.
+export interface CanvasImageElement extends CanvasBox {
+  type: "image";
+  image?: string;
+  placeholder?: string;
+  caption?: string;
+  fit?: "cover";
 }
 
 export interface CanvasTableElement extends CanvasBox {
@@ -724,6 +799,7 @@ export type CanvasElement =
   | CanvasShapeElement
   | CanvasIconElement
   | CanvasChartElement
+  | CanvasImageElement
   | CanvasTableElement;
 
 export interface CanvasSlide {
@@ -740,14 +816,42 @@ export interface CanvasSlide {
   tone?: SlideTone;
 }
 
-export type SlideContent =
+/** A picture of the user's (by id, img1...) placed on a slide: the box includes the room for the caption; fit "cover" fills the box, cropped. */
+export interface SlidePicture extends CanvasBox {
+  image: string;
+  caption?: string;
+  fit?: "cover";
+}
+
+/**
+ * Optional look settings any slide can carry, on top of its layout's own fields. Each overrides the deck's setting for
+ * that one slide: its background picture ("none" = no picture here, an image id = that picture, absent = the deck's),
+ * its background and accent colours (hex, no #), and whether it shows the page number and the logo (false hides).
+ */
+export interface SlideOptions {
+  /** Pictures placed on top of the slide, whatever its layout, each in its own box (inches on the 10 x 5.625 slide). */
+  pictures?: SlidePicture[];
+  backgroundImage?: string;
+  background?: string;
+  accent?: string;
+  pageNumber?: boolean;
+  logo?: boolean;
+  /** Font style for this slide only (the deck's, when absent). */
+  fontPair?: FontPairKey;
+  /** Every text size on this slide times this (0.7 to 1.5); absent or 1 leaves sizes as the layout sets them. */
+  textScale?: number;
+}
+
+export type SlideContent = SlideContentBase & SlideOptions;
+
+type SlideContentBase =
   | BulletsSlide | StatSlide | ComparisonSlide | QuoteSlide | SectionSlide
   | TableSlide | ChartSlide | GridSlide | RankedSlide | TimelineSlide | ColumnsSlide
   | ProblemSolutionSlide | TeamSlide | IconListSlide | FunnelSlide | StatsRowSlide
   | ProcessSlide | RecommendationSlide | CanvasSlide | ThankYouSlide | PresenterSlide
   | HeroSlide | TiersSlide | RecapSlide | GlossarySlide | RoadmapSlide
   | MatrixSlide | FlowchartSlide | CalendarSlide | GallerySlide | QuoteCarouselSlide
-  | AdvancedTableSlide | CustomSlide;
+  | AdvancedTableSlide | ImageSlide | PhotosSlide | BeforeAfterSlide | CustomSlide;
 
 // A slide drawn by a community layout (see layoutRegistry.ts). `custom` is the
 // layout's name and `data` is what that layout's normalize() returned.
@@ -787,6 +891,8 @@ export interface SlideDeck {
   // fonts are known. PowerPoint falls back to a similar font if the reader
   // does not have it.
   fonts?: { heading: string; body: string };
+  /** One of the user's pictures (img1...) as the background of every slide, softened with each slide's colour; "none" says there is deliberately no background picture. */
+  backgroundImage?: string;
   slides: SlideContent[];
 }
 
@@ -855,122 +961,6 @@ function resolveContrastColors(deck: Pick<SlideDeck, "background" | "accent" | "
   return resolveColors({ background: contrastBackground, accent: deck.accent, fontPair: deck.fontPair });
 }
 
-// ── Accent contrast safety ───────────────────────────────────────────────
-// The model can pick any accent hex, including one with poor contrast
-// against its chosen background (e.g. pale yellow on white). Since `accent`
-// is used as text color (slide headings), not a filled panel, an illegible
-// accent would make headings unreadable. Nudge lightness toward a minimum
-// contrast ratio while preserving hue/saturation, so the color the model
-// picked is used verbatim whenever it's already legible, and only adjusted
-// (never swapped for a generic black/white) when it isn't.
-
-type RgbTuple = [number, number, number];
-
-function hexToRgbTuple(hex: string): RgbTuple {
-  const n = parseInt(hex, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function relativeLuminance([r, g, b]: RgbTuple): number {
-  const [rl, gl, bl] = [r, g, b].map((c) => {
-    const s = c / 255;
-    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-  });
-  return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
-}
-
-function contrastRatio(l1: number, l2: number): number {
-  const lighter = Math.max(l1, l2);
-  const darker = Math.min(l1, l2);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-function rgbToHsl([r, g, b]: RgbTuple): [number, number, number] {
-  const rn = r / 255, gn = g / 255, bn = b / 255;
-  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
-  let h = 0;
-  let s = 0;
-  const l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    if (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
-    else if (max === gn) h = ((bn - rn) / d + 2) / 6;
-    else h = ((rn - gn) / d + 4) / 6;
-  }
-  return [h, s, l];
-}
-
-function hslToRgb(h: number, s: number, l: number): RgbTuple {
-  if (s === 0) {
-    const v = Math.round(l * 255);
-    return [v, v, v];
-  }
-  const hue2rgb = (p: number, q: number, t: number) => {
-    let tt = t;
-    if (tt < 0) tt += 1;
-    if (tt > 1) tt -= 1;
-    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
-    if (tt < 1 / 2) return q;
-    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
-    return p;
-  };
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  return [
-    Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
-    Math.round(hue2rgb(p, q, h) * 255),
-    Math.round(hue2rgb(p, q, h - 1 / 3) * 255),
-  ];
-}
-
-function rgbToHex([r, g, b]: RgbTuple): string {
-  return [r, g, b]
-    .map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0"))
-    .join("")
-    .toUpperCase();
-}
-
-// Blends `mix` into `base` by `amount` (0 = base, 1 = mix) into one solid
-// opaque hex. Used for table-cell tints instead of a translucent fill —
-// pptxgenjs's table cells don't reliably honor `fill.transparency` the way
-// shape/text fills do, so a "light tint" built that way can render as a
-// full-opacity color in real PowerPoint. A precomputed solid blend has no
-// such ambiguity.
-function blendHex(base: string, mix: string, amount: number): string {
-  const [br, bg, bb] = hexToRgbTuple(base);
-  const [mr, mg, mb] = hexToRgbTuple(mix);
-  return rgbToHex([br + (mr - br) * amount, bg + (mg - bg) * amount, bb + (mb - bb) * amount]);
-}
-
-const MIN_CONTRAST = 3.5;
-
-function ensureContrast(accentHex: string, backgroundHex: string, mode: "light" | "dark"): string {
-  const bgLum = relativeLuminance(hexToRgbTuple(backgroundHex));
-  let rgb = hexToRgbTuple(accentHex);
-  if (contrastRatio(relativeLuminance(rgb), bgLum) >= MIN_CONTRAST) return accentHex.toUpperCase();
-
-  const [h, s, initialL] = rgbToHsl(rgb);
-  let l = initialL;
-  const step = mode === "light" ? -0.05 : 0.05; // darken on a light background, lighten on a dark one
-  for (let i = 0; i < 18 && l > 0.02 && l < 0.98; i++) {
-    l += step;
-    rgb = hslToRgb(h, s, l);
-    if (contrastRatio(relativeLuminance(rgb), bgLum) >= MIN_CONTRAST) break;
-  }
-  return rgbToHex(rgb);
-}
-
-// White or near-black, whichever contrasts better against a given fill —
-// used for text sitting directly on the accent color itself (the "section"
-// layout's full-bleed background), since accent varies from a light custom
-// color to a dark theme color like "minimal"'s near-black.
-function contrastingTextColor(fillHex: string): string {
-  const fillLum = relativeLuminance(hexToRgbTuple(fillHex));
-  return contrastRatio(fillLum, relativeLuminance(hexToRgbTuple("FFFFFF"))) >= contrastRatio(fillLum, relativeLuminance(hexToRgbTuple("111827")))
-    ? "FFFFFF"
-    : "111827";
-}
 
 // The "recommendation" layout's spotlight box (the highlighted decision
 // value) always contrasts against the deck's own background rather than
@@ -1029,9 +1019,60 @@ function addIconBadge(s: PptxGenJS.Slide, icon: IllustrationIcon, colors: ThemeC
 // addChrome's footer bar would be invisible against it. `colorOverride` lets
 // section slides pass a color that contrasts with their accent-fill
 // background instead of the usual body-text color.
-function addPageNumber(s: PptxGenJS.Slide, pageNum: number, total: number, colors: ThemeColors, colorOverride?: string): void {
+// The user's own pictures (see lib/pptImages.ts): drawn whole, centred in a box, keeping their
+// proportions. A picture that wasn't passed in (the deck is built somewhere it was never added,
+// for example from WhatsApp) leaves an outlined box saying so, so the gap is visible, not silent.
+interface Box { x: number; y: number; w: number; h: number }
+
+function fitInBox(box: Box, width: number, height: number): Box {
+  const scale = Math.min(box.w / width, box.h / height);
+  const w = width * scale;
+  const h = height * scale;
+  return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
+}
+
+function addPicture(s: PptxGenJS.Slide, image: PptImage | undefined, box: Box, altText: string, colors: ThemeColors, emptyText: string = "Picture not available"): Box {
+  if (image && image.width > 0 && image.height > 0) {
+    const r = fitInBox(box, image.width, image.height);
+    s.addImage({ data: image.data, x: r.x, y: r.y, w: r.w, h: r.h, altText });
+    return r;
+  }
+  s.addShape("rect", { x: box.x, y: box.y, w: box.w, h: box.h, fill: { color: colors.background }, line: { color: colors.bodyColor, pt: 1, dashType: "dash", transparency: 50 } });
+  s.addText(emptyText, { x: box.x, y: box.y, w: box.w, h: box.h, fontSize: 12, italic: true, color: colors.bodyColor, fontFace: colors.bodyFont, align: "center", valign: "middle", transparency: 35 });
+  return box;
+}
+
+// One picture slot (a picture or an empty placeholder box) with its caption directly below it: the item's own,
+// or else the name the user gave the picture.
+function addPhoto(s: PptxGenJS.Slide, item: PhotoItem, box: Box, images: Record<string, PptImage> | undefined, colors: ThemeColors, fontSize = 11): void {
+  const picture = item.image ? images?.[item.image] : undefined;
+  const caption = item.caption || picture?.label;
+  const captionH = caption ? 0.4 : 0;
+  const emptyText = item.image ? "Picture not available" : item.placeholder || "Add a picture here";
+  const drawn = addPicture(s, picture, { x: box.x, y: box.y, w: box.w, h: box.h - captionH }, stripMarkdownLine(caption || "Picture"), colors, emptyText);
+  // The caption sits directly under the picture itself, not at the bottom of its slot.
+  if (caption) s.addText(stripMarkdownLine(caption), { x: box.x, y: drawn.y + drawn.h + 0.03, w: box.w, h: captionH - 0.03, fontSize, italic: true, color: colors.bodyColor, fontFace: colors.bodyFont, align: "center", valign: "middle" });
+}
+
+// Bullet rows with an accent dot each, evenly dividing an area (the same look as the plain bullets slide).
+function addBulletRows(s: PptxGenJS.Slide, bullets: string[], area: Box, colors: ThemeColors, fontSize: number): void {
+  const rowH = area.h / Math.max(bullets.length, 1);
+  bullets.forEach((bullet, i) => {
+    const y = area.y + i * rowH;
+    s.addShape("ellipse", { x: area.x, y: y + rowH / 2 - 0.07, w: 0.14, h: 0.14, fill: { color: colors.accent }, line: { type: "none" } });
+    s.addText(stripMarkdownLine(bullet), { x: area.x + 0.3, y, w: area.w - 0.3, h: rowH, fontSize, color: colors.bodyColor, fontFace: colors.bodyFont, valign: "middle" });
+  });
+}
+
+// The page number's right edge: 9.5, or left of a bottom-right logo.
+const PAGE_NUMBER_RIGHT = 9.5;
+function pageNumberRight(logo: LogoPlacement | null): number {
+  return logo?.corner === "bottom-right" ? Math.min(PAGE_NUMBER_RIGHT, logo.plate.x - 0.1) : PAGE_NUMBER_RIGHT;
+}
+
+function addPageNumber(s: PptxGenJS.Slide, pageNum: number, total: number, colors: ThemeColors, colorOverride?: string, logo: LogoPlacement | null = null): void {
   s.addText(`${pageNum} / ${total}`, {
-    x: 8.7, y: 5.32, w: 0.8, h: 0.28,
+    x: pageNumberRight(logo) - 0.8, y: 5.32, w: 0.8, h: 0.28,
     fontSize: 9, color: colorOverride ?? colors.bodyColor, fontFace: colors.bodyFont, align: "right", transparency: colorOverride ? 30 : 35,
   });
 }
@@ -1054,31 +1095,38 @@ function addChrome(
   s: PptxGenJS.Slide,
   colors: ThemeColors,
   iconCache: IconCache,
-  opts: { title?: string; icon?: IllustrationIcon; pageNum: number; total: number; showPageNumbers: boolean }
+  opts: { title?: string; icon?: IllustrationIcon; pageNum: number; total: number; showPageNumbers: boolean; logo?: LogoPlacement | null }
 ): void {
   s.addShape("rect", { x: 0, y: 0, w: 10, h: CHROME_HEADER_H, fill: { color: colors.accent }, line: { type: "none" } });
   const onAccent = contrastingTextColor(colors.accent);
   const badgeSize = 0.42;
+  // A logo in a top corner takes that end of the header bar: the title starts after it, or the
+  // icon badge (and the title's right end) moves left of it.
+  const logo = opts.logo ?? null;
+  const badgeX = logo?.corner === "top-right" ? Math.min(10 - 0.35 - badgeSize, logo.plate.x - 0.1 - badgeSize) : 10 - 0.35 - badgeSize;
+  const titleX = logo?.corner === "top-left" ? Math.max(0.5, logo.plate.x + logo.plate.w + 0.12) : 0.5;
+  let titleRight = opts.icon ? 8.6 : 9.5;
+  if (logo?.corner === "top-right") titleRight = Math.min(titleRight, opts.icon ? badgeX - 0.1 : logo.plate.x - 0.12);
   if (opts.title) {
     s.addText(stripMarkdownLine(opts.title), {
-      x: 0.5, y: 0, w: opts.icon ? 8.1 : 9, h: CHROME_HEADER_H,
+      x: titleX, y: 0, w: titleRight - titleX, h: CHROME_HEADER_H,
       fontSize: 20, bold: true, color: onAccent, fontFace: colors.headingFont, valign: "middle",
     });
   }
   if (opts.icon) {
-    addIconBadge(s, opts.icon, colors, iconCache, { x: 10 - 0.35 - badgeSize, y: (CHROME_HEADER_H - badgeSize) / 2, size: badgeSize, onAccentBg: true });
+    addIconBadge(s, opts.icon, colors, iconCache, { x: badgeX, y: (CHROME_HEADER_H - badgeSize) / 2, size: badgeSize, onAccentBg: true });
   }
   if (opts.showPageNumbers) {
     s.addShape("rect", { x: 0, y: 5.625 - CHROME_FOOTER_H, w: 10, h: CHROME_FOOTER_H, fill: { color: colors.accent, transparency: 88 }, line: { type: "none" } });
     s.addText(`${opts.pageNum} / ${opts.total}`, {
-      x: 8.7, y: 5.625 - CHROME_FOOTER_H, w: 0.8, h: CHROME_FOOTER_H,
+      x: pageNumberRight(logo) - 0.8, y: 5.625 - CHROME_FOOTER_H, w: 0.8, h: CHROME_FOOTER_H,
       fontSize: 9, color: colors.bodyColor, fontFace: colors.bodyFont, align: "right", valign: "middle", transparency: 25,
     });
   }
 }
 
 // ── Canvas layout rendering ───────────────────────────────────────────────
-const CANVAS_TEXT_SIZE_PT: Record<CanvasTextSize, number> = { xl: 36, lg: 24, md: 16, sm: 12, xs: 9.5 };
+export { CANVAS_TEXT_SIZE_PT } from "./deckConstants.js";
 const MIN_CANVAS_ELEMENT_SIZE = 0.1;
 
 // Grid snapping helper functions
@@ -1181,7 +1229,7 @@ function renderCanvasText(s: PptxGenJS.Slide, colors: ThemeColors, el: CanvasTex
   s.addText(text, {
     x: position.x, y: position.y, w: position.w, h: position.h, margin: 0,
     fontSize, fontFace: family, bold: el.bold, italic: el.italic,
-    color: resolveCanvasTextColor(el.textRole, colors),
+    color: el.color && /^[0-9A-Fa-f]{6}$/.test(el.color) ? el.color.toUpperCase() : resolveCanvasTextColor(el.textRole, colors),
     align: el.align ?? "left", valign: el.valign ?? "top",
   });
 }
@@ -1210,14 +1258,25 @@ function renderCanvasIcon(s: PptxGenJS.Slide, colors: ThemeColors, iconCache: Ic
     // No badge context here (canvas elements have no fillRole/textRole on
     // an icon), so this always draws in the deck's accent — same default
     // addIconBadge uses when its caller doesn't opt into onAccentBg.
-    const png = getIconPng(iconCache, el.icon, colors.accent);
+    const png = getIconPng(iconCache, el.icon, el.onAccent ? contrastingTextColor(colors.accent) : colors.accent);
     if (png) {
       const glyphSize = size * 0.7;
       s.addImage({ data: `image/png;base64,${png}`, x: el.x + (el.w - glyphSize) / 2, y: el.y + (el.h - glyphSize) / 2, w: glyphSize, h: glyphSize });
     }
   } else {
-    addIconBadge(s, el.icon, colors, iconCache, { x: el.x, y: el.y, size });
+    addIconBadge(s, el.icon, colors, iconCache, { x: el.x, y: el.y, size, onAccentBg: el.onAccent });
   }
+}
+
+function renderCanvasImage(s: PptxGenJS.Slide, colors: ThemeColors, el: CanvasImageElement, images: Record<string, PptImage> | undefined): void {
+  const picture = el.image ? images?.[el.image] : undefined;
+  if (el.fit === "cover" && picture && picture.width > 0 && picture.height > 0) {
+    // Fills the box edge to edge, cropped to fit; nothing is written under it.
+    s.addImage({ data: picture.data, x: el.x, y: el.y, w: picture.width / 100, h: picture.height / 100, sizing: { type: "cover", w: el.w, h: el.h }, altText: stripMarkdownLine(el.caption || "Picture") });
+    return;
+  }
+  // Whole picture (or the empty placeholder box) with its caption directly below: the element's own, else the picture's name.
+  addPhoto(s, { image: el.image, placeholder: el.placeholder, caption: el.caption }, { x: el.x, y: el.y, w: el.w, h: el.h }, images, colors, el.w < 4 ? 10 : 11);
 }
 
 // Shared by both the fixed "table" layout and canvas table elements — the
@@ -1405,15 +1464,16 @@ function renderChartAt(
 
 function renderCanvasSlide(
   s: PptxGenJS.Slide, colors: ThemeColors, iconCache: IconCache, slide: CanvasSlide,
-  slideIdx: number, totalSlides: number, showPageNumbers: boolean
+  slideIdx: number, totalSlides: number, showPageNumbers: boolean, logo: LogoPlacement | null = null,
+  images?: Record<string, PptImage>
 ): void {
   s.background = { color: colors.background };
   const top = slide.fullBleed ? 0 : CONTENT_TOP;
   const bottom = slide.fullBleed ? 5.625 : CONTENT_BOTTOM;
   if (!slide.fullBleed) {
-    addChrome(s, colors, iconCache, { title: slide.title, icon: slide.icon, pageNum: slideIdx + 1, total: totalSlides, showPageNumbers });
+    addChrome(s, colors, iconCache, { title: slide.title, icon: slide.icon, pageNum: slideIdx + 1, total: totalSlides, showPageNumbers, logo });
   } else if (showPageNumbers) {
-    addPageNumber(s, slideIdx + 1, totalSlides, colors);
+    addPageNumber(s, slideIdx + 1, totalSlides, colors, undefined, logo);
   }
   for (const raw of slide.elements) {
     // Nudge onto the chrome-safe area rather than dropping — an element the
@@ -1425,6 +1485,7 @@ function renderCanvasSlide(
     if (el.type === "text") renderCanvasText(s, colors, el);
     else if (el.type === "shape") renderCanvasShape(s, colors, el);
     else if (el.type === "icon") renderCanvasIcon(s, colors, iconCache, el);
+    else if (el.type === "image") renderCanvasImage(s, colors, el, images);
     else if (el.type === "chart") renderChartAt(s, colors, el, el.chartType, el.categories, el.values, el.series, el.title, el.style);
     else renderTableAt(s, colors, el, el.headers, el.rows);
   }
@@ -1437,6 +1498,12 @@ export interface BuildPptxOptions {
   // purely a rendering choice, so this is passed in separately by whoever
   // is downloading rather than stored on the deck JSON itself. Defaults on.
   pageNumbers?: boolean;
+  // The user's own logo, drawn in one corner of every slide (see lib/pptLogo.ts). Also an
+  // export-time choice. Absent means no logo.
+  logo?: PptLogo;
+  // The user's own pictures by id (img1...), for "image" slides and gallery cards that name one.
+  // A slide that names a picture that isn't here is drawn without it (see the image branches).
+  images?: Record<string, PptImage>;
 }
 
 // Every slide carries an optional top-level `icon`; three item-array layouts
@@ -1475,15 +1542,86 @@ function collectUsedIcons(deck: SlideDeck): Set<IllustrationIcon> {
 }
 
 export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promise<Buffer> {
+  const pptx = new PptxGenJS();
+  await drawDeck(deck, opts, pptx, false);
+  return (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
+}
+
+/**
+ * The same drawing, written down instead of turned into a file: every slide as positioned text, shapes and pictures
+ * with colours and sizes already worked out. This is what the editor and the preview show, so they cannot disagree
+ * with the export. Pictures in `opts.images` and `opts.logo` should carry `data: "ref:<id>"`; the client supplies the pixels.
+ */
+export async function recordDeck(deck: SlideDeck, opts?: BuildPptxOptions): Promise<RecordedDeck> {
+  const recorder = new DeckRecorder();
+  await drawDeck(deck, opts, recorder as unknown as PptxGenJS, true);
+  return recorder.result();
+}
+
+/** The colours and fonts a slide is drawn with: the deck's, the contrast look's, or its own (background, accent, font style). */
+export function slidePalette(deck: SlideDeck, slide: SlideContent): ThemeColors {
+  const base = resolveColors(deck);
+  const toneColors = slide.tone === "contrast" ? resolveContrastColors(deck, base) : base;
+  const background = normalizeHex(slide.background);
+  const accent = normalizeHex(slide.accent);
+  if (background || accent || slide.fontPair) return resolveColors({ background: background ?? toneColors.background, accent: accent ?? deck.accent, fontPair: slide.fontPair ?? deck.fontPair });
+  return toneColors;
+}
+
+function scaleFont<T extends { fontSize?: unknown } | undefined>(opts: T, k: number): T {
+  if (!opts || typeof opts.fontSize !== "number") return opts;
+  return { ...opts, fontSize: Math.max(6, Math.round(opts.fontSize * k * 2) / 2) };
+}
+
+function scaleRuns(text: unknown, k: number): unknown {
+  return Array.isArray(text) ? text.map((run) => (run && typeof run === "object" && "options" in run ? { ...run, options: scaleFont((run as { options?: { fontSize?: unknown } }).options, k) } : run)) : text;
+}
+
+/** The slide, with every text size multiplied by `scale`: text and table cells are scaled as they are added. */
+function withTextScale(slide: PptxGenJS.Slide, scale: number | undefined): PptxGenJS.Slide {
+  if (!scale || scale === 1) return slide;
+  return new Proxy(slide, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target);
+      if (key === "addText") return (text: unknown, opts?: object) => (target.addText as (t: unknown, o?: object) => unknown)(scaleRuns(text, scale), scaleFont(opts, scale));
+      if (key === "addTable") {
+        return (rows: unknown, opts?: object) =>
+          (target.addTable as (r: unknown, o?: object) => unknown)(
+            Array.isArray(rows) ? rows.map((row) => (Array.isArray(row) ? row.map((cell) => (cell && typeof cell === "object" && "options" in cell ? { ...cell, options: scaleFont((cell as { options?: { fontSize?: unknown } }).options, scale) } : cell)) : row)) : rows,
+            scaleFont(opts, scale)
+          );
+      }
+      return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+    },
+    set(target, key, value) {
+      return Reflect.set(target, key, value, target);
+    },
+  });
+}
+
+async function drawDeck(deck: SlideDeck, opts: BuildPptxOptions | undefined, pptx: PptxGenJS, recording: boolean): Promise<void> {
   const showPageNumbers = opts?.pageNumbers !== false;
+  const logo = opts?.logo ? placeLogo(opts.logo) : null;
+  const allSlides: PptxGenJS.Slide[] = [];
+  // The slide content each drawn slide came from (the cover has none), for the settings that apply after the layouts are drawn.
+  const slideOptionsOf = new Map<PptxGenJS.Slide, SlideContent>();
+  const slideColorsOf = new Map<PptxGenJS.Slide, ThemeColors>();
   const baseColors = resolveColors(deck);
   // Only computed when at least one slide actually opts into it — an
   // unthemed or single-palette deck never pays for a second resolveColors
   // pass or a second set of cached icon renders.
   const usesContrastTone = deck.slides.some((s) => s.tone === "contrast");
   const contrastColors = usesContrastTone ? resolveContrastColors(deck, baseColors) : null;
-  const pptx = new PptxGenJS();
   const totalSlides = deck.slides.length;
+  // A slide with its own background or accent colour gets a palette of its own, derived like the deck's (text colours
+  // follow its background), on top of the contrast look when it has that.
+  const ownPalettes = new Map<SlideContent, ThemeColors>();
+  for (const slide of deck.slides) {
+    const base = slide.tone === "contrast" && contrastColors ? contrastColors : baseColors;
+    const background = normalizeHex(slide.background);
+    const accent = normalizeHex(slide.accent);
+    if (background || accent || slide.fontPair) ownPalettes.set(slide, resolveColors({ background: background ?? base.background, accent: accent ?? deck.accent, fontPair: slide.fontPair ?? deck.fontPair }));
+  }
 
   // Pre-rendered once, up front, so the (synchronous) per-slide render loop
   // below never has to await mid-slide — see buildIconCache's own comment.
@@ -1494,6 +1632,7 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
   const usedIcons = collectUsedIcons(deck);
   const iconColors = [baseColors.accent, contrastingTextColor(baseColors.accent)];
   if (contrastColors) iconColors.push(contrastColors.accent, contrastingTextColor(contrastColors.accent));
+  for (const own of ownPalettes.values()) iconColors.push(own.accent, contrastingTextColor(own.accent));
   const iconCache = usedIcons.size > 0 ? await buildIconCache(usedIcons, iconColors) : new Map();
 
   // Not pptx.defineSlideMaster({ background }) — pptxgenjs v4's
@@ -1506,6 +1645,7 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
   // via a master text style.
   if (deck.title) {
     const titleSlide = pptx.addSlide();
+    allSlides.push(titleSlide);
     titleSlide.background = { color: baseColors.background };
     const isFormalCover = !!(deck.subtitle || (deck.meta && deck.meta.length > 0));
     if (isFormalCover) {
@@ -1540,14 +1680,19 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
   }
 
   deck.slides.forEach((slide, slideIdx) => {
-    const s = pptx.addSlide();
+    const drawn = pptx.addSlide();
+    allSlides.push(drawn);
+    slideOptionsOf.set(drawn, slide);
+    // What the layouts draw on: the slide itself, or a view of it that scales every text size.
+    const s = withTextScale(drawn, slide.textScale);
     // Shadows the outer baseColors for the rest of this iteration — every
     // "colors.*" reference below (there are dozens, across every layout
     // branch) resolves to whichever palette this one slide's tone picks,
     // with no per-layout changes needed.
-    const colors = slide.tone === "contrast" && contrastColors ? contrastColors : baseColors;
+    const colors = ownPalettes.get(slide) ?? (slide.tone === "contrast" && contrastColors ? contrastColors : baseColors);
+    slideColorsOf.set(drawn, colors);
     const chrome = (title?: string) =>
-      addChrome(s, colors, iconCache, { title, icon: slide.icon, pageNum: slideIdx + 1, total: totalSlides, showPageNumbers });
+      addChrome(s, colors, iconCache, { title, icon: slide.icon, pageNum: slideIdx + 1, total: totalSlides, showPageNumbers: showPageNumbers && slide.pageNumber !== false, logo: slide.logo === false ? null : logo });
 
     if (slide.layout === "custom") {
       s.background = { color: colors.background };
@@ -1742,7 +1887,7 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
       // No addChrome here — the slide is already full-bleed accent, so a
       // second accent bar on top would be invisible; use the bare page
       // number instead, recolored to contrast with the accent fill.
-      if (showPageNumbers) addPageNumber(s, slideIdx + 1, totalSlides, colors, onAccent);
+      if (showPageNumbers) addPageNumber(s, slideIdx + 1, totalSlides, colors, onAccent, logo);
       if (slide.notes) s.addNotes(stripMarkdownLine(slide.notes));
       return;
     } else if (slide.layout === "thank_you") {
@@ -1769,7 +1914,7 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
         });
       }
       if (slide.icon) addIconBadge(s, slide.icon, colors, iconCache, { x: (10 - ICON_BADGE_SIZE) / 2, y: 0.75, onAccentBg: true });
-      if (showPageNumbers) addPageNumber(s, slideIdx + 1, totalSlides, colors, onAccent);
+      if (showPageNumbers) addPageNumber(s, slideIdx + 1, totalSlides, colors, onAccent, logo);
       if (slide.notes) s.addNotes(stripMarkdownLine(slide.notes));
       return;
     } else if (slide.layout === "table") {
@@ -1952,6 +2097,18 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
         const itemFill = blendHex(colors.background, colors.bodyColor, 0.06);
 
         s.addShape("rect", { x: itemX, y: itemY, w: itemW, h: itemH, fill: { color: itemFill }, line: { type: "solid", color: colors.bodyColor, pt: 1 } });
+        if (item.image || item.placeholder) {
+          // A card with the user's own picture (or an empty placeholder box): picture on top, then the title and caption (no description).
+          const cardPicture = item.image ? opts?.images?.[item.image] : undefined;
+          const cardCaption = item.caption || cardPicture?.label; // a picture always has a caption below it
+          const titleH = item.title ? 0.4 : 0;
+          const captionH = cardCaption ? 0.35 : 0;
+          const textTop = itemY + itemH - 0.15 - titleH - captionH;
+          addPicture(s, cardPicture, { x: itemX + 0.15, y: itemY + 0.15, w: itemW - 0.3, h: Math.max(textTop - 0.1 - (itemY + 0.15), 0.3) }, stripMarkdownLine(cardCaption || item.title || "Picture"), colors, item.image ? "Picture not available" : item.placeholder || "Add a picture here");
+          if (item.title) s.addText(stripMarkdownLine(item.title), { x: itemX + 0.15, y: textTop, w: itemW - 0.3, h: titleH, fontSize: 12, bold: true, color: colors.titleColor, fontFace: colors.headingFont });
+          if (cardCaption) s.addText(stripMarkdownLine(cardCaption), { x: itemX + 0.15, y: textTop + titleH, w: itemW - 0.3, h: captionH, fontSize: 9, italic: true, color: colors.bodyColor, fontFace: colors.bodyFont });
+          return;
+        }
         if (item.icon) addIconBadge(s, item.icon, colors, iconCache, { x: itemX + 0.15, y: itemY + 0.15, size: 0.3 });
         s.addText(stripMarkdownLine(item.title || ""), {
           x: itemX + 0.2, y: itemY + 0.2, w: itemW - 0.4, h: 0.4,
@@ -1971,6 +2128,114 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
 
       if (slide.icon) addIconBadge(s, slide.icon, colors, iconCache);
       if (slide.notes) s.addNotes(stripMarkdownLine(slide.notes));
+    } else if (slide.layout === "image") {
+      const picture = slide.image ? opts?.images?.[slide.image] : undefined;
+      // No picture named: an empty placeholder box saying what belongs there, for the user to fill in PowerPoint.
+      const emptyText = slide.image ? "Picture not available" : slide.placeholder || "Add a picture here";
+      // A picture always has a caption below it: the slide's own, or else the name the user gave the picture.
+      const caption = slide.caption || picture?.label;
+      const alt = stripMarkdownLine(caption || slide.title || "Picture");
+      const placement = slide.placement ?? "full";
+      const bullets = slide.bullets ?? [];
+      if (placement === "background") {
+        // The picture fills the whole slide, with the text on a dark panel across the bottom. No header bar.
+        s.background = { color: colors.background };
+        if (picture && picture.width > 0 && picture.height > 0) {
+          s.addImage({ data: picture.data, x: 0, y: 0, w: picture.width / 100, h: picture.height / 100, sizing: { type: "cover", w: 10, h: 5.625 }, altText: alt });
+        } else {
+          s.addShape("rect", { x: 0, y: 0, w: 10, h: 5.625, fill: { color: colors.accent }, line: { type: "none" } });
+          s.addText(emptyText, { x: 0.5, y: 0.6, w: 9, h: 2, fontSize: 14, italic: true, color: contrastingTextColor(colors.accent), fontFace: colors.bodyFont, align: "center", valign: "middle", transparency: 30 });
+        }
+        const lines = bullets.slice(0, 4);
+        const panelH = Math.min(3.4, 0.35 + (slide.title ? 0.7 : 0) + lines.length * 0.42 + (caption ? 0.4 : 0) + 0.15);
+        const panelY = 5.625 - panelH;
+        s.addShape("rect", { x: 0, y: panelY, w: 10, h: panelH, fill: { color: "000000", transparency: 35 }, line: { type: "none" } });
+        let y = panelY + 0.2;
+        if (slide.title) {
+          s.addText(stripMarkdownLine(slide.title), { x: 0.6, y, w: 8.8, h: 0.6, fontSize: 26, bold: true, color: "FFFFFF", fontFace: colors.headingFont, valign: "middle" });
+          y += 0.7;
+        }
+        lines.forEach((line) => {
+          s.addText(stripMarkdownLine(line), { x: 0.6, y, w: 8.8, h: 0.4, fontSize: 15, color: "FFFFFF", fontFace: colors.bodyFont, valign: "middle" });
+          y += 0.42;
+        });
+        if (caption) s.addText(stripMarkdownLine(caption), { x: 0.6, y, w: 8.8, h: 0.38, fontSize: 11, italic: true, color: "FFFFFF", fontFace: colors.bodyFont, valign: "middle", transparency: 20 });
+        if (showPageNumbers) addPageNumber(s, slideIdx + 1, totalSlides, colors, "FFFFFF", logo);
+      } else {
+        s.background = { color: colors.background };
+        chrome(slide.title);
+        const areaH = CONTENT_BOTTOM - CONTENT_TOP;
+        const captionH = caption ? 0.45 : 0;
+        // The caption sits directly under the picture as drawn, not at the bottom of its slot.
+        const captionUnder = (drawn: Box, x: number, w: number, fontSize: number) => {
+          if (caption) s.addText(stripMarkdownLine(caption), { x, y: drawn.y + drawn.h + 0.04, w, h: captionH - 0.05, fontSize, italic: true, color: colors.bodyColor, fontFace: colors.bodyFont, align: "center", valign: "middle" });
+        };
+        if ((placement === "left" || placement === "right") && bullets.length > 0) {
+          const picW = 5.3;
+          const gap = 0.3;
+          const textW = 9 - picW - gap;
+          const picX = placement === "left" ? 0.5 : 0.5 + textW + gap;
+          const textX = placement === "left" ? 0.5 + picW + gap : 0.5;
+          captionUnder(addPicture(s, picture, { x: picX, y: CONTENT_TOP, w: picW, h: areaH - captionH }, alt, colors, emptyText), picX, picW, 11);
+          addBulletRows(s, bullets, { x: textX, y: CONTENT_TOP, w: textW, h: areaH }, colors, 15);
+        } else if ((placement === "top" || placement === "bottom") && bullets.length > 0) {
+          // A wide picture band with the points in a row of lines above or below it.
+          const picAreaH = 2.55;
+          const gap = 0.2;
+          const textH = areaH - picAreaH - gap;
+          const picY = placement === "top" ? CONTENT_TOP : CONTENT_TOP + textH + gap;
+          const textY = placement === "top" ? CONTENT_TOP + picAreaH + gap : CONTENT_TOP;
+          captionUnder(addPicture(s, picture, { x: 0.5, y: picY, w: 9, h: picAreaH - captionH }, alt, colors, emptyText), 0.5, 9, 11);
+          addBulletRows(s, bullets.slice(0, 4), { x: 0.5, y: textY, w: 9, h: textH }, colors, 14);
+        } else {
+          captionUnder(addPicture(s, picture, { x: 0.5, y: CONTENT_TOP, w: 9, h: areaH - captionH }, alt, colors, emptyText), 0.5, 9, 12);
+        }
+      }
+    } else if (slide.layout === "photos") {
+      s.background = { color: colors.background };
+      chrome(slide.title);
+      const items = slide.items.slice(0, 4);
+      const gap = 0.3;
+      const x0 = 0.5;
+      const w0 = 9;
+      const h0 = CONTENT_BOTTOM - CONTENT_TOP;
+      const arrangement = slide.arrangement ?? (items.length === 2 ? "pair" : items.length === 3 ? "trio" : "quad");
+      const boxes: Box[] = [];
+      if (arrangement === "pair" || (arrangement === "trio" && items.length < 3) || (arrangement === "quad" && items.length === 2)) {
+        const w = (w0 - gap) / 2;
+        items.slice(0, 2).forEach((_, i) => boxes.push({ x: x0 + i * (w + gap), y: CONTENT_TOP, w, h: h0 }));
+      } else if (arrangement === "trio") {
+        // One large picture on the left, two stacked on the right.
+        const bigW = 5.4;
+        const smallW = w0 - bigW - gap;
+        const smallH = (h0 - gap) / 2;
+        boxes.push({ x: x0, y: CONTENT_TOP, w: bigW, h: h0 });
+        boxes.push({ x: x0 + bigW + gap, y: CONTENT_TOP, w: smallW, h: smallH });
+        boxes.push({ x: x0 + bigW + gap, y: CONTENT_TOP + smallH + gap, w: smallW, h: smallH });
+      } else if (arrangement === "quad") {
+        const w = (w0 - gap) / 2;
+        const h = (h0 - gap) / 2;
+        items.forEach((_, i) => boxes.push({ x: x0 + (i % 2) * (w + gap), y: CONTENT_TOP + Math.floor(i / 2) * (h + gap), w, h }));
+      } else {
+        // strip: a single row; pictures keep their shape inside equal slots
+        const w = (w0 - gap * (items.length - 1)) / items.length;
+        items.forEach((_, i) => boxes.push({ x: x0 + i * (w + gap), y: CONTENT_TOP + 0.4, w, h: h0 - 0.8 }));
+      }
+      items.slice(0, boxes.length).forEach((item, i) => addPhoto(s, item, boxes[i], opts?.images, colors, arrangement === "strip" || boxes[i].w < 4 ? 10 : 11));
+    } else if (slide.layout === "before_after") {
+      s.background = { color: colors.background };
+      chrome(slide.title);
+      const gap = 0.4;
+      const w = (9 - gap) / 2;
+      const chipH = 0.36;
+      const top = CONTENT_TOP + 0.05;
+      const sides: [PhotoItem, string][] = [[slide.before, slide.beforeLabel || "Before"], [slide.after, slide.afterLabel || "After"]];
+      sides.forEach(([item, label], i) => {
+        const x = 0.5 + i * (w + gap);
+        s.addShape("roundRect", { x, y: top, w: 1.3, h: chipH, rectRadius: 0.06, fill: { color: i === 0 ? colors.bodyColor : colors.accent, transparency: i === 0 ? 70 : 0 }, line: { type: "none" } });
+        s.addText(stripMarkdownLine(label).toUpperCase(), { x, y: top, w: 1.3, h: chipH, fontSize: 10, bold: true, charSpacing: 1.5, align: "center", valign: "middle", color: i === 0 ? colors.titleColor : contrastingTextColor(colors.accent), fontFace: colors.headingFont });
+        addPhoto(s, item, { x, y: top + chipH + 0.12, w, h: CONTENT_BOTTOM - (top + chipH + 0.12) }, opts?.images, colors, 12);
+      });
     } else if (slide.layout === "quote_carousel") {
       s.background = { color: colors.background };
       chrome(slide.title);
@@ -2020,7 +2285,7 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
       // Handles its own background/chrome/notes internally (like "section"
       // above) — return here to skip the generic `if (slide.notes)` call at
       // the bottom of this loop, which would otherwise double-add notes.
-      renderCanvasSlide(s, colors, iconCache, slide, slideIdx, totalSlides, showPageNumbers);
+      renderCanvasSlide(s, colors, iconCache, slide, slideIdx, totalSlides, showPageNumbers, logo, opts?.images);
       return;
     } else if (slide.layout === "grid") {
       s.background = { color: colors.background };
@@ -2270,7 +2535,7 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
           }
         });
       }
-      if (showPageNumbers) addPageNumber(s, slideIdx + 1, totalSlides, colors, onAccent);
+      if (showPageNumbers) addPageNumber(s, slideIdx + 1, totalSlides, colors, onAccent, logo);
       if (slide.notes) s.addNotes(stripMarkdownLine(slide.notes));
       return;
     } else if (slide.layout === "tiers") {
@@ -2451,5 +2716,50 @@ export async function buildPptx(deck: SlideDeck, opts?: BuildPptxOptions): Promi
     if (slide.notes) s.addNotes(stripMarkdownLine(slide.notes));
   });
 
-  return (await pptx.write({ outputType: "nodebuffer" })) as Buffer;
+  // The deck's own picture behind the slides: set last, so it replaces the colour each layout set, and softened with that
+  // slide's own colour so its text stays legible. Slides that are filled with the accent colour (dividers, the closing
+  // slide) keep it: a wash of a bright colour over a busy picture only turns muddy, and they set the deck's rhythm.
+  const made = new Map<string, string>();
+  const washable = new Set([baseColors.background, contrastColors?.background]);
+  for (const slide of allSlides) {
+    const own = slideOptionsOf.get(slide);
+    // The slide's own choice first: "none" is no picture here, a picture id is that picture even on a slide the deck's
+    // picture would skip. Otherwise the deck's picture, unless the slide has a colour of its own.
+    const chosen = own?.backgroundImage;
+    const explicit = isImageId(chosen);
+    if (chosen === "none") continue;
+    const id = explicit ? chosen : deck.backgroundImage;
+    const backdrop = id && id !== "none" ? opts?.images?.[id] : undefined;
+    if (!id || !backdrop || backdrop.width <= 0 || backdrop.height <= 0) continue;
+    const color = (slide.background as { color?: string } | undefined)?.color ?? baseColors.background;
+    if (!explicit && (!washable.has(color) || (own && ownPalettes.has(own)))) continue;
+    if (recording) {
+      // Not washed here (that needs the picture's pixels): the client washes the picture with this colour, as the export does.
+      slide.background = { color, image: id, scrim: BACKGROUND_SCRIM } as never;
+      continue;
+    }
+    const key = `${id}|${color}`;
+    if (!made.has(key)) made.set(key, await softenedBackground(backdrop, color));
+    // The path only names the file type (jpeg): with data alone pptxgenjs would store the JPEG as a .png.
+    slide.background = { path: "background.jpg", data: made.get(key)! };
+  }
+
+  // The slide's own pictures sit on top of its layout (below the logo).
+  for (const slide of allSlides) {
+    const own = slideOptionsOf.get(slide);
+    if (!own?.pictures) continue;
+    const colors = slideColorsOf.get(slide) ?? baseColors;
+    for (const picture of own.pictures) {
+      renderCanvasImage(slide, colors, { type: "image", ...picture }, opts?.images);
+    }
+  }
+
+  // Added after everything else so it sits on top; slides that return early above are covered too.
+  if (logo && opts?.logo) {
+    for (const slide of allSlides) {
+      if (slideOptionsOf.get(slide)?.logo === false) continue;
+      slide.addShape(logo.round ? "ellipse" : "roundRect", { x: logo.plate.x, y: logo.plate.y, w: logo.plate.w, h: logo.plate.h, ...(logo.round ? {} : { rectRadius: 0.06 }), fill: { color: "FFFFFF" }, line: { type: "none" } });
+      slide.addImage({ data: opts.logo.data, x: logo.image.x, y: logo.image.y, w: logo.image.w, h: logo.image.h, altText: "Logo" });
+    }
+  }
 }

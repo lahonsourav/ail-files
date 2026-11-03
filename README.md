@@ -46,9 +46,23 @@ if (deck) {
 
 Every file type has a `normalize…` function (turns messy or AI-written JSON into something safe to draw) and a `build…` function. The normalizers are written to be forgiving: a bad slide loses its fancy layout, not its place in the deck.
 
+## Your own logo and pictures
+
+A deck can use the user's own pictures and a logo. Prepare them first (this checks the type and size and reads the pixel size), then pass them as options:
+
+```ts
+import { buildPptx, prepareImages, prepareLogo } from "ail-files";
+
+const images = await prepareImages({ img1: "data:image/png;base64,..." }); // by id, img1...img8
+const logo = await prepareLogo({ dataUrl: "data:image/png;base64,...", corner: "top-right", round: true });
+const bytes = await buildPptx(deck, { images: images ?? undefined, logo: logo ?? undefined });
+```
+
+A slide names a picture by id: `{ "layout": "image", "image": "img1", "caption": "Our lighthouse" }`, `{ "layout": "photos", "items": [{ "image": "img1" }, { "image": "img2" }] }` or `{ "layout": "before_after", "before": { "image": "img1" }, "after": { "image": "img2" } }`. A deck can also set `"backgroundImage": "img3"` to use one picture behind every slide, and a free-form (`canvas`) slide can place pictures and give each piece of text its own `"color"`. A slide that names a picture that was not passed in says "Picture not available" instead of leaving a silent gap. `recordDeck(deck)` returns what was drawn on each slide as data, for building a preview in a browser. `features` lists the options this release has (`pptx.logo`, `pptx.images`).
+
 ## Slide layouts
 
-Built in: `bullets`, `stat`, `comparison`, `quote`, `section`, `table`, `chart`, `grid`, `ranked`, `timeline`, `columns`, `problem_solution`, `team`, `iconlist`, `funnel`, `stats_row`, `process`, `recommendation`, `canvas`, `thank_you`, `presenter`, `hero`, `tiers`, `recap`, `glossary`, `roadmap`, `matrix`, `flowchart`, `calendar`, `gallery`, `quote_carousel`, `advanced_table`.
+Built in: `bullets`, `stat`, `comparison`, `quote`, `section`, `table`, `chart`, `grid`, `ranked`, `timeline`, `columns`, `problem_solution`, `team`, `iconlist`, `funnel`, `stats_row`, `process`, `recommendation`, `canvas`, `thank_you`, `presenter`, `hero`, `tiers`, `recap`, `glossary`, `roadmap`, `matrix`, `flowchart`, `calendar`, `gallery`, `quote_carousel`, `advanced_table`, `image`, `photos`, `before_after`.
 
 Community layouts live in [`src/layouts/`](src/layouts). One ships as an example: `pricing`.
 

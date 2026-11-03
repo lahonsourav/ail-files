@@ -33,6 +33,12 @@ Rules for layouts:
 - **Names** are lowercase letters, digits and underscores, and cannot reuse a built-in name.
 - Keep text inside its box. Cap list lengths so the longest allowed input still fits.
 
+## Where the engine is changed
+
+This repository is the only home of the engine. The [Ail app](https://www.ailighthouse.in), the main user of this package, does not keep a copy: it installs a tagged release of `ail-files`, so a fix or feature made here reaches its users when a maintainer tags a release and the app moves to it. You never need access to the Ail app to work on this repository: JSON goes in and a file comes out, and the tests, the CLI and the examples here cover all of it.
+
+Four entry points are published. `ail-files` is the full engine and needs Node. `ail-files/edit` is the editing logic and the prompts (pure code, same rule as `browser`). `ail-files/editor` is the React editor, driven by a `DeckEditorHost` (see the README); it must not import the Ail app or call a server directly, so keep every `fetch`, store and account behind the host. `ail-files/browser` holds only pure code (cleaning up JSON, the picture and logo rules, the examples and every type) so it can be bundled into a web page: keep anything that needs Node, `sharp`, `pptxgenjs` or the PDF printer out of `src/browser.ts` and the files it imports. `test/browser.test.ts` fails if you don't.
+
 ## Change an existing layout, PDF, Word or Excel output
 
 Open an issue first if the change alters how existing files look, so we can agree on it. Add or update a test next to the code you change.

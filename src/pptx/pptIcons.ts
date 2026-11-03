@@ -566,6 +566,16 @@ export async function buildIconCache(icons: Iterable<IllustrationIcon>, hexColor
   return cache;
 }
 
+// Which icon a rendered picture is, so a drawn slide that only holds the pixels (lib/pptRecorder.ts) can still say which icon it used.
+const iconByPng = new Map<string, { icon: IllustrationIcon; color: string }>();
+
 export function getIconPng(cache: IconCache, icon: IllustrationIcon, hexColor: string): string | undefined {
-  return cache.get(cacheKey(icon, hexColor));
+  const png = cache.get(cacheKey(icon, hexColor));
+  if (png) iconByPng.set(png, { icon, color: hexColor.replace("#", "").toUpperCase() });
+  return png;
+}
+
+/** The icon a picture (base64 PNG, with or without its data URL prefix) was rendered from, if it came from getIconPng. */
+export function iconOfPng(data: string): { icon: IllustrationIcon; color: string } | undefined {
+  return iconByPng.get(data.includes("base64,") ? data.slice(data.indexOf("base64,") + 7) : data);
 }
