@@ -1,6 +1,6 @@
 import { StrictMode, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { DeckEditor, barButtonClass, type DeckEditorHost, type EditorPicture } from "../src/editor.js";
+import { DeckEditor, PressEffect, barButtonClass, type DeckEditorHost, type EditorPicture } from "../src/editor.js";
 import { imageIdsInDeck, IMAGE_LIMITS, type SlideDeck } from "../src/browser.js";
 import "./styles.css";
 
@@ -133,6 +133,8 @@ function App() {
 
   if (!loaded || pictures.length === 0) return <p className="p-6 text-sm">Starting the editor…</p>;
   return (
+    <>
+    <PressEffect />
     <DeckEditor
       initialDeck={loaded.deck}
       initialVersion={loaded.version}
@@ -145,6 +147,7 @@ function App() {
       notice={<p className="px-4 py-1.5 text-[11px] text-[var(--ds-text-muted)] border-b border-[var(--ds-border-muted)]">Changes are kept in memory on this machine. Open this page in two tabs to try live sync; set ANTHROPIC_API_KEY to try the &quot;ask about this slide&quot; box.</p>}
       labels={{ assistantName: "the model", picturesNote: "Samples drawn here, and any PNG, JPEG or WebP you add. They stay in this tab." }}
     />
+    </>
   );
 }
 

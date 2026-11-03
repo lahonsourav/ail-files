@@ -21,3 +21,5 @@ export { default as SlideAsk } from "./editor/SlideAsk.js";
 export { default as SlideHandles, type BoxRef } from "./editor/SlideHandles.js";
 export { default as PictureSelect } from "./editor/PictureSelect.js";
 export { default as ColorField } from "./editor/ColorField.js";
+export { default as PressEffect } from "./editor/PressEffect.js";
+export { default as SuccessTick } from "./editor/SuccessTick.js";
