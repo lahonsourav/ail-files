@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping make these files look better. The two easiest ways in are a **theme** and a **layout**.
+Thanks for helping make these files look better. The easiest ways in are a **theme**, a **layout**, and the **editor** that people use to change a deck after it is made.
 
 Running the tests needs Node 22.12 or newer (the test runner requires it). Using the package only needs Node 20.
 
@@ -32,6 +32,38 @@ Rules for layouts:
 - **Start with `helpers.chrome(title)`** unless you are deliberately drawing your own header. Stay between `helpers.contentTop` and `helpers.contentBottom`.
 - **Names** are lowercase letters, digits and underscores, and cannot reuse a built-in name.
 - Keep text inside its box. Cap list lengths so the longest allowed input still fits.
+
+## Improve the editor
+
+The deck editor (the slide strip, the live preview, the fields, the pickers, drag handles, undo, the "ask about this slide" box) lives here, in two parts, so you never need the Ail app to change it.
+
+| What you want to change | Where it is |
+| --- | --- |
+| What an edit does to a deck: add, move, copy and delete slides, set a field, move and resize parts, undo history, which control a field gets | `src/edit/deckEdit.ts` |
+| Two people editing one deck (the three-way merge) | `src/edit/deckMerge.ts` |
+| Turning a normal slide into a free-form one | `src/edit/slideToFreeForm.ts` |
+| A slide's own look (picture, colours, font, text size, placed pictures) | `src/edit/slideOptionsEdit.ts` |
+| What the model is told when someone asks about one slide, and how its reply is read | `src/edit/slideAsk.ts` |
+| What the model is told to make a deck, PDF, Word or Excel file from a chat | `src/prompts/index.ts` |
+| The screen: layout, the form for each kind of field, the toolbar, the pickers, the handles on the slide | `src/editor/*.tsx` (`DeckEditor.tsx` is the page; `SlideForm.tsx` walks a slide's fields, so a new layout needs no form code) |
+| What the editor needs from the program around it | `src/editor/host.ts` (`DeckEditorHost`) |
+
+Rules:
+
+- **Editing logic is pure.** Everything in `src/edit/` and `src/prompts/` runs in a browser, in Node and in a test, so it may not import Node, `sharp`, `pptxgenjs` or the PDF printer (`test/browser.test.ts` fails if it does). An edit takes a deck and returns a new deck; it never changes the one it was given.
+- **The editor never reaches for a server, a store or an account.** Saving, drawing the preview, asking the model, downloading and listing versions all go through the `host` the program passes in. If the editor needs something new from the program, add a method to `DeckEditorHost`, make it optional where you can, and say in the pull request what a program has to do to support it. Do not call `fetch` from a component.
+- **No wording that belongs to one program.** Anything an app would say differently (its assistant's name, where pictures are kept) is a `labels` entry with a plain default, not a string in a component.
+- **Style with the ten `--ds-*` colours only** (`styles/editor-tokens.css` lists them) and Tailwind classes, so the editor takes on the look of whatever program it is in. No hard-coded colours, no other CSS files.
+- **Keep it working on a phone.** The three parts stack and dragging is left out below the large breakpoint; check your change at phone width too.
+- **A control needs a label a screen reader can read**, and a button that does something destructive says what it does ("Remove", not only a cross).
+
+Try your change:
+
+1. `npm test` runs the editing tests and `test/editor.test.ts`, which renders the whole editor from a stand-in host. Add a test for new behaviour next to it: for an edit, in the test file named after the module; for a control, a render test that checks what it shows.
+2. To see it on screen, run it in a program of your own: `npm run build`, install this folder into it (`npm install ../ail-files`), and give `DeckEditor` a host (the README has a minimal one). Tailwind in that program needs `@source "../node_modules/ail-files/dist/editor";` in its CSS.
+3. Put a screenshot of the change in the pull request, light and dark if colours are involved, and one at phone width if the layout moved.
+
+Changing the model prompts (`src/prompts/`, `src/edit/slideAsk.ts`) changes what every program built on this package tells its model. Open an issue first, show an example of a reply before and after, and keep the fenced block names (` ```slides `, ` ```pdf_doc `, ` ```docx_doc `, ` ```excel_doc `) exactly as they are: programs read replies by them.
 
 ## Where the engine is changed
 

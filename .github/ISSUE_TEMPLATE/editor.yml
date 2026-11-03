@@ -1,0 +1,29 @@
+name: Editor idea or problem
+description: Something in the deck editor (the screen people use to change a deck) that should work or look different.
+labels: [editor]
+body:
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part?
+      options:
+        - The screen (layout, buttons, pickers, handles on the slide)
+        - A field or control for a kind of slide content
+        - What an edit does (add, move, undo, merge)
+        - The "ask about this slide" box or its prompt
+        - The prompts that make a file from a chat
+        - Something the editor needs from the program around it (the host)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what should happen instead?
+      description: Steps help. A screenshot or short recording helps more.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where are you using it?
+      description: Your own program, the Ail app, or a test. Say the version of `ail-files` if you know it.
