@@ -1,0 +1,43 @@
+/* The colours the deck editor (ail-files/editor) is drawn with. Copy this file, or set the same variables in your own theme: the editor
+   only reads these ten, as var(--ds-...), so it follows whatever look your program already has. Light is the default here; dark is
+   used when <html data-theme="dark"> is set, or when the browser prefers it and no data-theme is set. */
+:root {
+  --ds-accent: #2563eb;
+  --ds-on-accent: #ffffff;
+  --ds-bg-primary: #faf9f5;
+  --ds-bg-surface: #f3f2ee;
+  --ds-bg-elevated: #e7e5df;
+  --ds-bg-hover: #e7e5df;
+  --ds-border-muted: #d4d2cb;
+  --ds-text-primary: #171716;
+  --ds-text-secondary: #34332f;
+  --ds-text-muted: #5c5b56;
+}
+
+:root[data-theme="dark"] {
+  --ds-accent: #3b82f6;
+  --ds-on-accent: #ffffff;
+  --ds-bg-primary: #151515;
+  --ds-bg-surface: #1c1c1b;
+  --ds-bg-elevated: #2c2c2a;
+  --ds-bg-hover: #2c2c2a;
+  --ds-border-muted: #3a3a38;
+  --ds-text-primary: #f9f9f7;
+  --ds-text-secondary: #cbcbc7;
+  --ds-text-muted: #a8a8a4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --ds-accent: #3b82f6;
+    --ds-on-accent: #ffffff;
+    --ds-bg-primary: #151515;
+    --ds-bg-surface: #1c1c1b;
+    --ds-bg-elevated: #2c2c2a;
+    --ds-bg-hover: #2c2c2a;
+    --ds-border-muted: #3a3a38;
+    --ds-text-primary: #f9f9f7;
+    --ds-text-secondary: #cbcbc7;
+    --ds-text-muted: #a8a8a4;
+  }
+}

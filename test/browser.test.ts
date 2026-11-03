@@ -31,16 +31,19 @@ function walk(entry: string, seen = new Set<string>(), bad: string[] = []): { fi
   return { files: [...seen], bad };
 }
 
-describe("ail-files/browser", () => {
-  it("imports nothing that needs Node or a server-only library", () => {
-    const { files, bad } = walk(join(root, "browser.ts"));
-    expect(files.length).toBeGreaterThan(5);
-    expect(bad).toEqual([]);
-  });
+describe("ail-files/browser and ail-files/edit", () => {
+  for (const entry of ["browser.ts", "edit.ts"]) {
+    it(`${entry} imports nothing that needs Node or a server-only library`, () => {
+      const { files, bad } = walk(join(root, entry));
+      expect(files.length).toBeGreaterThan(5);
+      expect(bad).toEqual([]);
+    });
+  }
 
   it("is exported from package.json, next to the main entry", () => {
     const pkg = JSON.parse(readFileSync(join(root, "..", "package.json"), "utf8"));
-    expect(pkg.exports["./browser"]).toEqual({ types: "./dist/browser.d.ts", import: "./dist/browser.js" });
+    expect(pkg.exports["./browser"]).toEqual({ types: "./dist/browser.d.ts", import: "./dist/browser.js", default: "./dist/browser.js" }); // "default" lets a CommonJS tool (tsx, jest) require() it too
+    expect(pkg.exports["./edit"]).toEqual({ types: "./dist/edit.d.ts", import: "./dist/edit.js", default: "./dist/edit.js" });
     expect(pkg.exports["."].import).toBe("./dist/index.js");
   });
 
