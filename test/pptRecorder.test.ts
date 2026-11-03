@@ -29,7 +29,7 @@ async function slideXmls(file: Buffer) {
   return Promise.all(names.map((n) => zip.file(n)!.async("string")));
 }
 const count = (xml: string, re: RegExp) => (xml.match(re) ?? []).length;
-const xmlTexts = (xml: string) => [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'")).join("");
+const xmlTexts = (xml: string) => [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1].replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&")).join("");
 const cellText = (cell: unknown): string => (typeof cell === "string" ? cell : Array.isArray(cell) ? cell.map(cellText).join("") : cell && typeof cell === "object" ? cellText((cell as { text?: unknown }).text) : "");
 const recordedText = (items: RecordedDeck["slides"][number]["items"]) =>
   items
