@@ -9,8 +9,24 @@ import { registerCommunityLayouts } from "./layouts/index.js";
 registerCommunityLayouts();
 
 // PowerPoint
-export { buildPptx, FONT_PAIRS, DEFAULT_FONT_PAIR } from "./pptx/presentationBuilder.js";
+export { buildPptx, recordDeck, FONT_PAIRS, DEFAULT_FONT_PAIR } from "./pptx/presentationBuilder.js";
 export type { SlideDeck, SlideContent, FontPairKey, BuildPptxOptions } from "./pptx/presentationBuilder.js";
+export type { RecordedDeck } from "./pptx/pptRecorded.js";
+
+// The user's own logo and pictures. Both are export-time options (`buildPptx(deck, { logo, images })`), prepared first with
+// `prepareLogo` / `prepareImages` (checks the type and size, and reads the pixel size), and a deck names a picture by id (img1, img2...).
+export { prepareLogo } from "./pptx/pptLogoImage.js";
+export { prepareImages } from "./pptx/pptImagesPrepare.js";
+export { LOGO_CORNERS, LOGO_LIMITS, parseLogoRequest } from "./pptx/pptLogo.js";
+export type { PptLogo, LogoCorner } from "./pptx/pptLogo.js";
+export { IMAGE_LIMITS, imageIdsInDeck, deckHasPicturePlaceholders, isImageId } from "./pptx/pptImages.js";
+export type { PptImage } from "./pptx/pptImages.js";
+
+/**
+ * Options this engine has that an older release may not. A program that needs one of them can check this list before relying on it
+ * (the Ail app does, to choose between this engine and its own).
+ */
+export const features = ["pptx.logo", "pptx.images"] as const;
 export { normalizeDeck, extractSlideDeck } from "./pptx/slideDeck.js";
 export { EXAMPLE_DECK } from "./pptx/exampleDeck.js";
 export { defineLayout, registerLayout, getLayout, listLayouts, BUILTIN_LAYOUT_NAMES } from "./pptx/layoutRegistry.js";

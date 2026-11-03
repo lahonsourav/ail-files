@@ -732,3 +732,45 @@ describe("extractSlideDeck — truncation detection", () => {
     expect(result.truncated).toBe(false);
   });
 });
+
+describe("normalizeDeck: editing mode", () => {
+  const bullets = (n: number) => Array.from({ length: n }, (_, i) => ({ layout: "bullets", title: `B${i + 1}`, bullets: ["x", "y"] }));
+
+  it("normally turns a third straight bullets slide into a divider (a rule for a model's reply)", () => {
+    const deck = normalizeDeck({ title: "T", slides: bullets(3) })!;
+    expect(deck.slides.map((s) => s.layout)).toEqual(["bullets", "bullets", "section"]);
+  });
+
+  it("when editing, keeps every slide as the person left it, bullets and all", () => {
+    const deck = normalizeDeck({ title: "T", slides: bullets(3) }, { editing: true })!;
+    expect(deck.slides.map((s) => s.layout)).toEqual(["bullets", "bullets", "bullets"]);
+    expect((deck.slides[2] as { bullets: string[] }).bullets).toEqual(["x", "y"]);
+  });
+
+  it("normally adds an agenda to a long deck with sections; when editing it does not bring one back", () => {
+    const slides = [{ layout: "section", title: "One" }, ...bullets(1), { layout: "section", title: "Two" }, { layout: "stat", value: "1", caption: "c" }, { layout: "quote", quote: "q", author: "a" }];
+    expect(normalizeDeck({ title: "T", slides })!.slides[0].layout).toBe("ranked");
+    expect(normalizeDeck({ title: "T", slides }, { editing: true })!.slides.length).toBe(slides.length);
+    expect(normalizeDeck({ title: "T", slides }, { editing: true })!.slides[0].layout).toBe("section");
+  });
+
+  it("still checks each slide", () => {
+    expect(normalizeDeck({ title: "T", slides: [{ layout: "nope" }] }, { editing: true })).toBeNull();
+  });
+});
+
+describe("a canvas text element's own colour", () => {
+  const slideOf = (color: unknown) => {
+    const deck = normalizeDeck({ slides: [{ layout: "canvas", elements: [{ type: "text", x: 1, y: 1, w: 4, h: 1, text: "Hello", color }] }] }, { editing: true });
+    return (deck?.slides[0] as unknown as { elements: { color?: string }[] }).elements[0];
+  };
+  it("keeps a six digit hex, upper case and without a #", () => {
+    expect(slideOf("ffffff").color).toBe("FFFFFF");
+    expect(slideOf("#12ab34").color).toBe("12AB34");
+  });
+  it("drops anything else", () => {
+    expect(slideOf("white").color).toBeUndefined();
+    expect(slideOf("FFF").color).toBeUndefined();
+    expect(slideOf(undefined).color).toBeUndefined();
+  });
+});

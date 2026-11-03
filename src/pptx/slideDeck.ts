@@ -1,13 +1,14 @@
 import type {
-  SlideDeck, SlideContent, IllustrationIcon, FontPairKey, SlideTone, ChartSeries, TableCell, DeckMetaItem,
+  SlideDeck, SlideContent, SlideOptions, SlidePicture, IllustrationIcon, FontPairKey, SlideTone, ChartSeries, TableCell, DeckMetaItem,
   CanvasElement, FillRole, TextRole, FontRole, CanvasTextSize, PresenterInfo,
   StatItem, CoverPillar, TierItem, TimelineStep, InsightBanner, ComparisonColumn,
   RecapExample, GlossaryTerm, RoadmapStep,
-  MatrixCell, FlowchartNode, CalendarEvent, GalleryItem, QuoteItem, AdvancedTableCell,
+  MatrixCell, FlowchartNode, CalendarEvent, GalleryItem, QuoteItem, AdvancedTableCell, PhotoItem, PhotoArrangement,
 } from "./presentationBuilder.js";
+import { cleanPlaceholderText, isImageId } from "./pptImages.js";
 import { getLayout } from "./layoutRegistry.js";
 
-const ILLUSTRATION_ICONS: readonly IllustrationIcon[] = [
+export const ILLUSTRATION_ICONS: readonly IllustrationIcon[] = [
   "idea", "growth", "team", "target", "rocket", "chart", "book", "checklist", "globe", "gear",
   "calendar", "shield", "money", "clock", "warning", "celebration", "star", "heart",
   "thumbs_up", "thumbs_down", "eye", "email", "phone", "location", "map", "home", "building",
@@ -421,6 +422,8 @@ function normalizeCalendarEvent(raw: unknown): CalendarEvent | null {
 }
 
 const GALLERY_ARRANGEMENTS = ["grid", "horizontal", "vertical"] as const;
+export const IMAGE_PLACEMENTS = ["full", "left", "right", "top", "bottom", "background"] as const;
+export const PHOTO_ARRANGEMENTS = ["pair", "trio", "quad", "strip"] as const;
 
 function normalizeGalleryItem(raw: unknown): GalleryItem | null {
   if (!raw || typeof raw !== "object") return null;
@@ -428,8 +431,10 @@ function normalizeGalleryItem(raw: unknown): GalleryItem | null {
   const title = typeof i.title === "string" ? i.title : undefined;
   const description = typeof i.description === "string" ? i.description : undefined;
   const caption = typeof i.caption === "string" ? i.caption : undefined;
-  if (!title && !description && !caption) return null;
-  return { title, description, caption, icon: normalizeIcon(i.icon) };
+  const image = isImageId(i.image) ? i.image : undefined;
+  const placeholder = !image ? cleanPlaceholderText(i.placeholder) || undefined : undefined;
+  if (!title && !description && !caption && !image && !placeholder) return null;
+  return { title, description, caption, icon: normalizeIcon(i.icon), image, placeholder };
 }
 
 function normalizeQuoteItem(raw: unknown): QuoteItem | null {
@@ -519,6 +524,7 @@ function normalizeCanvasElement(raw: unknown): CanvasElement | null {
       type: "text", ...box, text: c.text,
       fontRole: enumOr<FontRole>(c.fontRole, FONT_ROLES),
       textRole: enumOr<TextRole>(c.textRole, TEXT_ROLES),
+      color: normalizeHexField(c.color),
       size: enumOr<CanvasTextSize>(c.size, TEXT_SIZES),
       bold: c.bold === true, italic: c.italic === true,
       align: enumOr(c.align, H_ALIGNS), valign: enumOr(c.valign, V_ALIGNS),
@@ -531,7 +537,14 @@ function normalizeCanvasElement(raw: unknown): CanvasElement | null {
   }
   if (c.type === "icon") {
     const icon = normalizeIcon(c.icon);
-    return icon ? { type: "icon", ...box, icon, badge: c.badge !== false } : null;
+    return icon ? { type: "icon", ...box, icon, badge: c.badge !== false, ...(c.onAccent === true ? { onAccent: true } : {}) } : null;
+  }
+  // One of the user's pictures or an empty placeholder box. Neither (or an id that isn't a picture id): dropped.
+  if (c.type === "image") {
+    const image = isImageId(c.image) ? c.image : undefined;
+    const placeholder = !image ? cleanPlaceholderText(c.placeholder) || undefined : undefined;
+    if (!image && !placeholder) return null;
+    return { type: "image", ...box, image, placeholder, caption: typeof c.caption === "string" && c.caption ? c.caption : undefined, ...(c.fit === "cover" ? { fit: "cover" as const } : {}) };
   }
   if (c.type === "chart") {
     const chartType = enumOr(c.chartType, CHART_TYPES);
@@ -567,6 +580,20 @@ function normalizeCanvasElement(raw: unknown): CanvasElement | null {
     return headers.length > 0 && rows.length > 0 ? { type: "table", ...box, headers, rows } : null;
   }
   return null;
+}
+
+// One picture slot in a multi-picture layout: a picture id, or a placeholder, or nothing (dropped).
+function normalizePhotoItem(raw: unknown): PhotoItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const image = isImageId(r.image) ? r.image : undefined;
+  const placeholder = !image ? cleanPlaceholderText(r.placeholder) || undefined : undefined;
+  if (!image && !placeholder) return null;
+  return { image, placeholder, caption: typeof r.caption === "string" && r.caption ? r.caption : undefined };
+}
+
+function shortLabel(raw: unknown): string | undefined {
+  return typeof raw === "string" && raw.trim() ? raw.trim().slice(0, 20) : undefined;
 }
 
 // Normalizes one slide by its declared `layout`. A slide whose fields don't
@@ -830,6 +857,41 @@ function normalizeSlide(raw: unknown): SlideContent | null {
       };
     }
   }
+  // Several pictures with no cards around them. One usable picture is just an image slide.
+  if (layout === "photos" && Array.isArray(s.items)) {
+    const items = s.items.map(normalizePhotoItem).filter((i): i is PhotoItem => i !== null).slice(0, 4);
+    if (items.length >= 2) {
+      return { layout: "photos", title: typeof s.title === "string" ? s.title : undefined, items, arrangement: enumOr(s.arrangement, PHOTO_ARRANGEMENTS), icon, notes };
+    }
+    if (items.length === 1) {
+      return { layout: "image", title: typeof s.title === "string" ? s.title : undefined, image: items[0].image, placeholder: items[0].placeholder, caption: items[0].caption, icon, notes };
+    }
+  }
+  // Two pictures to compare.
+  if (layout === "before_after") {
+    const before = normalizePhotoItem(s.before);
+    const after = normalizePhotoItem(s.after);
+    if (before && after) {
+      return { layout: "before_after", title: typeof s.title === "string" ? s.title : undefined, before, after, beforeLabel: shortLabel(s.beforeLabel), afterLabel: shortLabel(s.afterLabel), icon, notes };
+    }
+    const only = before ?? after;
+    if (only) return { layout: "image", title: typeof s.title === "string" ? s.title : undefined, image: only.image, placeholder: only.placeholder, caption: only.caption, icon, notes };
+  }
+  // An "image" slide names one of the user's pictures, or has no picture and a placeholder: an empty box to fill later.
+  const placeholderText = cleanPlaceholderText(s.placeholder);
+  if (layout === "image" && (isImageId(s.image) || placeholderText)) {
+    const bullets = Array.isArray(s.bullets) ? stringArray(s.bullets).slice(0, 6) : [];
+    return {
+      layout: "image",
+      title: typeof s.title === "string" ? s.title : undefined,
+      image: isImageId(s.image) ? s.image : undefined,
+      placeholder: isImageId(s.image) ? undefined : placeholderText,
+      caption: typeof s.caption === "string" ? s.caption : undefined,
+      bullets: bullets.length > 0 ? bullets : undefined,
+      placement: enumOr(s.placement, IMAGE_PLACEMENTS),
+      icon, notes,
+    };
+  }
   if (layout === "quote_carousel" && Array.isArray(s.quotes)) {
     const quotes = s.quotes.map(normalizeQuoteItem).filter((q): q is QuoteItem => q !== null);
     if (quotes.length > 0) {
@@ -877,6 +939,55 @@ const HEX_COLOR_RE = /^#?[0-9a-fA-F]{6}$/;
 // PRESENTATION_MODE_SUFFIX in the generation prompt) — validated here the same way
 // regardless of source, since export/route.ts re-normalizes a client
 // payload through this same function rather than trusting its shape.
+const MAX_SLIDE_PICTURES = 8;
+const MIN_PICTURE_SIZE = 0.3;
+
+function normalizeSlidePictures(raw: unknown): SlidePicture[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: SlidePicture[] = [];
+  for (const item of raw.slice(0, MAX_SLIDE_PICTURES)) {
+    if (!item || typeof item !== "object") continue;
+    const i = item as Record<string, unknown>;
+    if (!isImageId(i.image)) continue;
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const [x, y, w, h] = [num(i.x), num(i.y), num(i.w), num(i.h)];
+    if (x === null || y === null || w === null || h === null) continue;
+    const width = Math.min(10, Math.max(MIN_PICTURE_SIZE, w));
+    const height = Math.min(5.625, Math.max(MIN_PICTURE_SIZE, h));
+    const picture: SlidePicture = { image: i.image, x: Math.min(Math.max(0, x), 10 - width), y: Math.min(Math.max(0, y), 5.625 - height), w: width, h: height };
+    if (typeof i.caption === "string" && i.caption.trim()) picture.caption = i.caption.trim().slice(0, 200);
+    if (i.fit === "cover") picture.fit = "cover";
+    out.push(picture);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/**
+ * A slide's own look settings (see SlideOptions): a background picture ("none" or an image id), background and accent
+ * colours, and page number / logo switched off. Only what is valid and set is kept, so a slide without them stays as it was.
+ */
+export function slideOptionsOf(raw: unknown): SlideOptions {
+  if (!raw || typeof raw !== "object") return {};
+  const r = raw as Record<string, unknown>;
+  const out: SlideOptions = {};
+  if (r.backgroundImage === "none" || isImageId(r.backgroundImage)) out.backgroundImage = r.backgroundImage as string;
+  const background = normalizeHexField(r.background);
+  if (background) out.background = background;
+  const accent = normalizeHexField(r.accent);
+  if (accent) out.accent = accent;
+  const pictures = normalizeSlidePictures(r.pictures);
+  if (pictures) out.pictures = pictures;
+  const fontPair = normalizeFontPair(r.fontPair);
+  if (fontPair) out.fontPair = fontPair;
+  if (typeof r.textScale === "number" && Number.isFinite(r.textScale)) {
+    const scale = Math.round(Math.min(1.5, Math.max(0.7, r.textScale)) * 100) / 100;
+    if (scale !== 1) out.textScale = scale;
+  }
+  if (r.pageNumber === false) out.pageNumber = false;
+  if (r.logo === false) out.logo = false;
+  return out;
+}
+
 function normalizeHexField(raw: unknown): string | undefined {
   if (typeof raw !== "string" || !HEX_COLOR_RE.test(raw)) return undefined;
   return raw.replace(/^#/, "").toUpperCase();
@@ -897,7 +1008,7 @@ function enforceBulletVariety(slides: SlideContent[]): SlideContent[] {
     streak++;
     if (streak < 3) return slide;
     streak = 0;
-    return { layout: "section", title: slide.title, icon: slide.icon, notes: slide.notes, tone: slide.tone } satisfies SlideContent;
+    return { layout: "section", title: slide.title, icon: slide.icon, notes: slide.notes, tone: slide.tone, ...slideOptionsOf(slide) } satisfies SlideContent;
   });
 }
 
@@ -926,7 +1037,12 @@ function insertAgendaSlide(slides: SlideContent[]): SlideContent[] {
   return [agendaSlide, ...slides];
 }
 
-export function normalizeDeck(parsed: unknown): SlideDeck | null {
+/**
+ * Checks and tidies a deck, one slide at a time. With `editing` the two deck-wide rewrites meant for a model's reply are
+ * left out: a third straight bullets slide is not turned into a bare divider (which drops its bullets), and an agenda
+ * slide is not added again after the person deleted it. A deck someone is editing, or has edited, should come back as they left it.
+ */
+export function normalizeDeck(parsed: unknown, opts: { editing?: boolean } = {}): SlideDeck | null {
   if (!parsed || typeof parsed !== "object") return null;
   const p = parsed as Record<string, unknown>;
   if (!Array.isArray(p.slides)) return null;
@@ -939,11 +1055,12 @@ export function normalizeDeck(parsed: unknown): SlideDeck | null {
     const slide = normalizeSlide(raw);
     if (!slide) return null;
     const tone = raw && typeof raw === "object" ? normalizeTone((raw as Record<string, unknown>).tone) : undefined;
-    return tone ? { ...slide, tone } : slide;
+    return { ...slide, ...(tone ? { tone } : {}), ...slideOptionsOf(raw) } as SlideContent;
   });
-  const normalized = enforceBulletVariety(slidesWithTone.filter((s): s is SlideContent => s !== null));
+  const kept = slidesWithTone.filter((s): s is SlideContent => s !== null);
+  const normalized = opts.editing ? kept : enforceBulletVariety(kept);
   if (normalized.length === 0) return null;
-  const slides = insertAgendaSlide(normalized);
+  const slides = opts.editing ? normalized : insertAgendaSlide(normalized);
 
   const meta = Array.isArray(p.meta) ? p.meta.map(normalizeMetaItem).filter((m): m is DeckMetaItem => m !== null) : undefined;
 
@@ -955,6 +1072,9 @@ export function normalizeDeck(parsed: unknown): SlideDeck | null {
     accent: normalizeHexField(p.accent),
     fontPair: normalizeFontPair(p.fontPair),
     fonts: normalizeFonts(p.fonts),
+    // "none" is the model saying, on purpose, that this deck has no background picture (the user asked for none), which keeps a
+    // background chosen in Images & logo from being added at download.
+    backgroundImage: isImageId(p.backgroundImage) || p.backgroundImage === "none" ? p.backgroundImage : undefined,
     slides,
   };
 }
