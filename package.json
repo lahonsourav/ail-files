@@ -1,6 +1,6 @@
 {
   "name": "ail-files",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Generate PowerPoint, PDF, Word and Excel files from JSON. Add your own slide layouts and themes.",
   "license": "Apache-2.0",
   "type": "module",
@@ -8,15 +8,43 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "default": "./dist/index.js" },
-    "./browser": { "types": "./dist/browser.d.ts", "import": "./dist/browser.js", "default": "./dist/browser.js" },
-    "./edit": { "types": "./dist/edit.d.ts", "import": "./dist/edit.js", "default": "./dist/edit.js" },
-    "./editor": { "types": "./dist/editor.d.ts", "import": "./dist/editor.js", "default": "./dist/editor.js" },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
+    },
+    "./edit": {
+      "types": "./dist/edit.d.ts",
+      "import": "./dist/edit.js",
+      "default": "./dist/edit.js"
+    },
+    "./editor": {
+      "types": "./dist/editor.d.ts",
+      "import": "./dist/editor.js",
+      "default": "./dist/editor.js"
+    },
     "./editor-tokens.css": "./styles/editor-tokens.css"
   },
-  "bin": { "ail-files": "./dist/cli.js" },
-  "files": ["dist", "themes", "examples", "styles", "LICENSE", "NOTICE", "README.md"],
-  "engines": { "node": ">=20" },
+  "bin": {
+    "ail-files": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "themes",
+    "examples",
+    "styles",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
@@ -45,6 +73,18 @@
     "typescript": "^7",
     "vitest": "^5.0.5"
   },
-  "keywords": ["pptx", "powerpoint", "pdf", "docx", "xlsx", "slides", "templates", "ai"],
-  "repository": { "type": "git", "url": "git+https://github.com/lahonsourav/ail-files.git" }
+  "keywords": [
+    "pptx",
+    "powerpoint",
+    "pdf",
+    "docx",
+    "xlsx",
+    "slides",
+    "templates",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lahonsourav/ail-files.git"
+  }
 }
