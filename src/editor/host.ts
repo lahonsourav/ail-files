@@ -21,7 +21,7 @@ export interface EditorPicture {
 
 export interface EditorLogo {
   enabled: boolean;
-  dataUrl?: string;
+  dataUrl?: string | null;
   corner: string;
   round: boolean;
 }
