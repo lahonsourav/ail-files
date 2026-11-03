@@ -30,6 +30,7 @@ export default function SlideToolbar({
   onChange,
   onLayout,
   onApplyPictureToAll,
+  assistantName = "the assistant",
 }: {
   slide: SlideContent;
   /** The deck as it is drawn (its background picture included). */
@@ -46,6 +47,8 @@ export default function SlideToolbar({
   onLayout: (layoutKey: string) => void;
   /** Use (or stop using) this slide's picture on every slide of the deck but the banner slides; `id` is the picture. */
   onApplyPictureToAll: (on: boolean, id: string) => void;
+  /** What rebuilds the slide when a layout is picked: "Ail", "the assistant". */
+  assistantName?: string;
 }) {
   const fields = slide as unknown as Record<string, unknown>;
   const set = (key: Parameters<typeof setSlideOption>[1], value: unknown) => onChange(setSlideOption(slide, key, value), `opt.${key}`);
@@ -70,7 +73,7 @@ export default function SlideToolbar({
         disabled={busy}
         onChange={(e) => e.target.value && onLayout(e.target.value)}
         className={selectClass}
-        title="Ail rebuilds this slide in the layout you pick"
+        title={`${assistantName.charAt(0).toUpperCase() + assistantName.slice(1)} rebuilds this slide in the layout you pick`}
       >
         <option value="">Layout: {layoutName(layout)}</option>
         {Object.keys(LAYOUT_LABELS)

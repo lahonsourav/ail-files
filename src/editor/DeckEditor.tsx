@@ -72,11 +72,12 @@ export interface DeckEditorProps {
   /** What shows over the slide while it is redrawn; a small spinner if left out. */
   busyMark?: ReactNode;
   /** Wording that depends on the program; every part has a plain default. */
-  labels?: { defaultPicture?: string; picturesNote?: string; readOnlyPicturesNote?: string };
+  labels?: { assistantName?: string; defaultPicture?: string; picturesNote?: string; readOnlyPicturesNote?: string };
 }
 
 export default function DeckEditor({ initialDeck, initialVersion, host, pictures: images, pictureMode, logo, picturesReadOnly = false, onAddPicture, back, headerActions, notice: headerNotice, dialogs, busyMark, labels = {} }: DeckEditorProps) {
   const isEditor = picturesReadOnly;
+  const assistantName = labels.assistantName ?? "the assistant";
   const [hist, setHist] = useState(() => createHistory<SlideDeck>(initialDeck));
   const deck = hist.present;
   const [selected, setSelected] = useState<number | "deck">(0);
@@ -404,11 +405,11 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
         images: images.map((i) => ({ id: i.id, label: i.label, description: i.description, width: i.width, height: i.height })),
       });
       if (!data.slide) return data.error ?? "Couldn't change the slide. Try again.";
-      if (latestDeck.current.slides[index] !== original) return "The slide changed while Ail was working. Ask again.";
+      if (latestDeck.current.slides[index] !== original) return `The slide changed while ${assistantName} was working. Ask again.`;
       change(updateSlide(latestDeck.current, index, data.slide), `${index}.ask.${Date.now()}`);
       return null;
     } catch {
-      return "Couldn't reach Ail. Check your connection and try again.";
+      return `Couldn't reach ${assistantName}. Check your connection and try again.`;
     }
   }
 
@@ -534,6 +535,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
           onRemove={remove}
           onChange={(next: SlideContent, key) => change(updateSlide(deck, sel, next), `${sel}.${key}`)}
           onApplyPictureToAll={applyPictureToAll}
+          assistantName={assistantName}
           onLayout={(layoutKey) => void (layoutKey === "canvas" ? turnOnFreeForm() : runAsk(`Change this slide to the "${layoutKey}" layout, carrying the content over and keeping what it says.`))}
         />
       )}
@@ -642,7 +644,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
               />
-              <SlideAsk key={`ask${sel}`} onSend={runAsk} busy={asking} note={askNote} />
+              <SlideAsk key={`ask${sel}`} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
             </>
           )}
         </section>
