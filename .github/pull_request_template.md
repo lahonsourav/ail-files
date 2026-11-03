@@ -22,6 +22,6 @@
 - [ ] Nothing in a component reaches a server: it goes through `DeckEditorHost` (new methods are optional, or the breaking change is explained below)
 - [ ] No wording that belongs to one program: it is a `labels` entry with a default
 - [ ] Colours only from the `--ds-*` variables; checked at phone width
-- [ ] Screenshot attached (light and dark if colours changed)
+- [ ] Screenshot attached, from `npm run editor` (light and dark if colours changed)
 - [ ] Prompt change: example reply before and after attached, fence names unchanged
 

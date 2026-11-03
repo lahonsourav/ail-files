@@ -1,0 +1,11 @@
+/* Tailwind reads the editor's class names from src/editor; the ten --ds-* colours come from the file the package ships. */
+@import "tailwindcss";
+@source "../src/editor";
+@import "../styles/editor-tokens.css";
+
+body {
+  margin: 0;
+  background: var(--ds-bg-primary);
+  color: var(--ds-text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}

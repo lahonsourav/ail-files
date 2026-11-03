@@ -83,7 +83,7 @@ const host: DeckEditorHost = {
 <DeckEditor initialDeck={deck} initialVersion={1} host={host} pictures={[]} pictureMode="use" logo={{ enabled: false, corner: "top-right", round: false }} />;
 ```
 
-If you use Tailwind, add `@source "../node_modules/ail-files/dist/editor";` to your CSS so it can see the editor's class names. `back`, `headerActions`, `notice`, `dialogs`, `busyMark` and `labels` (for example `assistantName`) let a program add its own buttons, dialogs and wording around the editor. The editing code and the editor are tested here (`test/editor.test.ts` renders the whole editor from a stand-in host). Where each part lives, and the rules for changing it, are in [CONTRIBUTING.md](CONTRIBUTING.md#improve-the-editor).
+If you use Tailwind, add `@source "../node_modules/ail-files/dist/editor";` to your CSS so it can see the editor's class names. `back`, `headerActions`, `notice`, `dialogs`, `busyMark` and `labels` (for example `assistantName`) let a program add its own buttons, dialogs and wording around the editor. **To see it without writing a program,** run `npm install` and `npm run editor` in this repository and open http://localhost:5173: the editor on a page, with a small backend in [`playground/`](playground) that draws, saves, converts and downloads (set `ANTHROPIC_API_KEY` to try the ask box too). The editing code and the editor are tested here (`test/editor.test.ts` renders the whole editor from a stand-in host). Where each part lives, and the rules for changing it, are in [CONTRIBUTING.md](CONTRIBUTING.md#improve-the-editor).
 
 ## Slide layouts
 

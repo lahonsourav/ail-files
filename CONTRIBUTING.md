@@ -46,7 +46,7 @@ The deck editor (the slide strip, the live preview, the fields, the pickers, dra
 | What the model is told when someone asks about one slide, and how its reply is read | `src/edit/slideAsk.ts` |
 | What the model is told to make a deck, PDF, Word or Excel file from a chat | `src/prompts/index.ts` |
 | The screen: layout, the form for each kind of field, the toolbar, the pickers, the handles on the slide | `src/editor/*.tsx` (`DeckEditor.tsx` is the page; `SlideForm.tsx` walks a slide's fields, so a new layout needs no form code) |
-| What the editor needs from the program around it | `src/editor/host.ts` (`DeckEditorHost`) |
+| What the editor needs from the program around it | `src/editor/host.ts` (`DeckEditorHost`); `playground/` is a complete example of one |
 
 Rules:
 
@@ -60,7 +60,7 @@ Rules:
 Try your change:
 
 1. `npm test` runs the editing tests and `test/editor.test.ts`, which renders the whole editor from a stand-in host. Add a test for new behaviour next to it: for an edit, in the test file named after the module; for a control, a render test that checks what it shows.
-2. To see it on screen, run it in a program of your own: `npm run build`, install this folder into it (`npm install ../ail-files`), and give `DeckEditor` a host (the README has a minimal one). Tailwind in that program needs `@source "../node_modules/ail-files/dist/editor";` in its CSS.
+2. To see it on screen, run `npm install` and then `npm run editor`, and open http://localhost:5173. That is the real editor on a page, with a small backend behind it (`playground/api.ts`) that draws the slides with the engine, saves in memory, makes the .pptx when you press Download, and turns a slide free-form. It reloads when you change the editor, the editing code or the engine, so you see your change straight away. Open it in two tabs to try live sync. To try the "ask about this slide" box, start it with `ANTHROPIC_API_KEY=... npm run editor` (`PLAYGROUND_MODEL` picks the model). Needs Node 22.12 or newer. `playground/main.tsx` is also the shortest example of what a program does to use the editor.
 3. Put a screenshot of the change in the pull request, light and dark if colours are involved, and one at phone width if the layout moved.
 
 Changing the model prompts (`src/prompts/`, `src/edit/slideAsk.ts`) changes what every program built on this package tells its model. Open an issue first, show an example of a reply before and after, and keep the fenced block names (` ```slides `, ` ```pdf_doc `, ` ```docx_doc `, ` ```excel_doc `) exactly as they are: programs read replies by them.
