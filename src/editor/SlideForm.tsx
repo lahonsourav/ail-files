@@ -3,6 +3,7 @@
 import { fieldSpec, getAt, layoutOf, insertAt, moveWithin, newCanvasElement, newListItem, optionalFields, removeAt, setAt, setBox, LAYOUT_LABELS, type Box, type Path } from "../edit/deckEdit.js";
 import PositionFields from "./PositionFields.js";
 import ColorField from "./ColorField.js";
+import PictureSelect from "./PictureSelect.js";
 import type { SlideContent } from "../pptx/presentationBuilder.js";
 import { SLIDE_OPTION_KEYS } from "../edit/slideOptionsEdit.js";
 
@@ -106,8 +107,11 @@ function Control({ k, value, path, ctx, label }: { k: string; value: unknown; pa
     );
   }
 
-  const wrap = (control: React.ReactNode, removable = false) => (
-    <label className="block space-y-1">
+  // A picture list is a button with a pop-up, so its wrapper is a div: inside a label, a click on a row would also click the button.
+  const wrap = (control: React.ReactNode, removable = false, plain = false) => {
+    const Box = plain ? "div" : "label";
+    return (
+    <Box className="block space-y-1">
       <span className="flex items-center justify-between text-xs font-medium text-[var(--ds-text-secondary)]">
         {text}
         {removable && (
@@ -117,8 +121,9 @@ function Control({ k, value, path, ctx, label }: { k: string; value: unknown; pa
         )}
       </span>
       {control}
-    </label>
-  );
+    </Box>
+    );
+  };
   const removable = k === "notes" || k === "caption" || k === "eyebrow" || k === "tone" || k === "icon";
 
   if (spec.kind === "flag") {
@@ -144,13 +149,19 @@ function Control({ k, value, path, ctx, label }: { k: string; value: unknown; pa
   if (spec.kind === "picture") {
     const id = String(value ?? "");
     return wrap(
-      <select value={id} onChange={(e) => (e.target.value ? ctx.set(path, e.target.value) : ctx.remove(path))} className={inputClass}>
-        <option value="">No picture (an empty box)</option>
-        {id && !ctx.pictures.some((p) => p.id === id) && <option value={id}>{id} (picture not found)</option>}
-        {ctx.pictures.map((p) => (
-          <option key={p.id} value={p.id}>{p.id} · {p.label}</option>
-        ))}
-      </select>
+      <PictureSelect
+        ariaLabel={text}
+        value={id}
+        buttonClassName="!text-sm !px-2.5 !py-1.5"
+        options={[
+          { value: "", label: "No picture (an empty box)" },
+          ...(id && !ctx.pictures.some((p) => p.id === id) ? [{ value: id, label: `${id} (picture not found)` }] : []),
+          ...ctx.pictures.map((p) => ({ value: p.id, label: `${p.id} · ${p.label}`, thumb: p.thumb })),
+        ]}
+        onChange={(next) => (next ? ctx.set(path, next) : ctx.remove(path))}
+      />,
+      false,
+      true
     );
   }
   if (spec.kind === "longtext") {

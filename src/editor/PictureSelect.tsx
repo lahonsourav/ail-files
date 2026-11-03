@@ -13,6 +13,8 @@ export interface PictureOption {
   thumb?: string;
   /** A shorter name for the closed button, when the row's own label is long ("Off" for "No picture on this slide"). */
   short?: string;
+  /** No thumbnail and no empty swatch: for a row that is an action ("+ Add one of my pictures"), not a picture. */
+  noSwatch?: boolean;
 }
 
 export default function PictureSelect({
@@ -23,6 +25,8 @@ export default function PictureSelect({
   className = "",
   prefix,
   bare = false,
+  buttonClassName = "",
+  accent = false,
 }: {
   value: string;
   options: PictureOption[];
@@ -33,10 +37,15 @@ export default function PictureSelect({
   prefix?: string;
   /** No border or fill of its own: the control sits inside a group that draws them. */
   bare?: boolean;
+  /** More classes for the closed button (a taller one inside a form). */
+  buttonClassName?: string;
+  /** The closed button reads as an action, in the accent colour. */
+  accent?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [alignRight, setAlignRight] = useState(false); // the list would run off the right edge of a narrow screen
+  const [openUp, setOpenUp] = useState(false); // not enough room under the button (a picker in a bar at the bottom of the page)
   const root = useRef<HTMLDivElement>(null);
   const listId = useId();
   const current = options.find((o) => o.value === value) ?? options[0];
@@ -53,6 +62,7 @@ export default function PictureSelect({
   function openList() {
     const rect = root.current?.getBoundingClientRect();
     setAlignRight(!!rect && rect.left + 256 > window.innerWidth - 8 && rect.right - 256 >= 8);
+    setOpenUp(!!rect && rect.bottom + 296 > window.innerHeight && rect.top > window.innerHeight - rect.bottom);
     setActive(Math.max(0, options.findIndex((o) => o.value === value)));
     setOpen(true);
   }
@@ -85,7 +95,7 @@ export default function PictureSelect({
   }
 
   const thumb = (o: PictureOption | undefined, size: string) =>
-    o?.thumb ? (
+    o?.noSwatch ? null : o?.thumb ? (
       // eslint-disable-next-line @next/next/no-img-element
       <img src={o.thumb} alt="" className={`${size} shrink-0 rounded-sm object-cover`} />
     ) : (
@@ -101,7 +111,7 @@ export default function PictureSelect({
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         onClick={() => (open ? setOpen(false) : openList())}
-        className={`flex items-center gap-1.5 w-full text-xs px-2 py-1 text-[var(--ds-text-primary)] outline-none ${bare ? "rounded-l-md hover:bg-[var(--ds-bg-hover)] focus-visible:bg-[var(--ds-bg-hover)]" : "rounded-md bg-[var(--ds-bg-primary)] border border-[var(--ds-border-muted)] focus:border-[var(--ds-accent)]"}`}
+        className={`flex items-center gap-1.5 w-full text-xs px-2 py-1 ${accent ? "text-[var(--ds-accent)]" : "text-[var(--ds-text-primary)]"} outline-none ${buttonClassName} ${bare ? "rounded-l-md hover:bg-[var(--ds-bg-hover)] focus-visible:bg-[var(--ds-bg-hover)]" : "rounded-md bg-[var(--ds-bg-primary)] border border-[var(--ds-border-muted)] focus:border-[var(--ds-accent)]"}`}
       >
         {thumb(current, "w-7 h-5")}
         <span className="truncate flex-1 text-left">
@@ -111,7 +121,7 @@ export default function PictureSelect({
         <span aria-hidden className="text-[var(--ds-text-muted)]">▾</span>
       </button>
       {open && (
-        <ul id={listId} role="listbox" aria-label={ariaLabel} className={`absolute ${alignRight ? "right-0" : "left-0"} top-full mt-1 z-30 w-64 max-w-[calc(100vw-1rem)] max-h-72 overflow-y-auto rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1`}>
+        <ul id={listId} role="listbox" aria-label={ariaLabel} className={`absolute ${alignRight ? "right-0" : "left-0"} ${openUp ? "bottom-full mb-1" : "top-full mt-1"} z-30 w-64 max-w-[calc(100vw-1rem)] max-h-72 overflow-y-auto rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1`}>
           {options.map((o, i) => (
             <li
               key={o.value}
@@ -124,7 +134,7 @@ export default function PictureSelect({
             >
               {thumb(o, "w-12 h-8")}
               <span className="flex-1 min-w-0 truncate">{o.label}</span>
-              {o.value === value && <span aria-hidden className="text-[var(--ds-accent)]">✓</span>}
+              {o.value === value && !o.noSwatch && <span aria-hidden className="text-[var(--ds-accent)]">✓</span>}
             </li>
           ))}
         </ul>

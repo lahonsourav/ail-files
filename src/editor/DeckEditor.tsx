@@ -14,6 +14,7 @@ import { mergeDecks } from "../edit/deckMerge.js";
 import { moveDrawn } from "../edit/recordedMove.js";
 import SlideHandles, { type BoxRef } from "./SlideHandles.js";
 import ColorField from "./ColorField.js";
+import PictureSelect from "./PictureSelect.js";
 import { addSlide, canRedo, canUndo, commit, createHistory, deleteSlide, duplicateSlide, LAYOUT_LABELS, layoutOf, moveSlide, NEW_SLIDE_TEMPLATES, newSlide, redo, setAt, undo, updateSlide, removeAt, insertAt, movableBoxes, lockedParts, setBox, type Box } from "../edit/deckEdit.js";
 import type { FontPairKey, SlideContent, SlideDeck } from "../pptx/presentationBuilder.js";
 import type { RecordedDeck } from "../pptx/pptRecorded.js";
@@ -125,6 +126,8 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     const chosen = pictureMode !== "none" ? images.find((i) => i.background && !i.backgroundOff) : undefined;
     return chosen && !deck.backgroundImage ? { ...deck, backgroundImage: chosen.id } : deck;
   }, [deck, images, pictureMode]);
+  // The pictures as the pickers show them: with a small copy of each, so a person chooses by what it looks like.
+  const choices = useMemo(() => images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height, thumb: i.dataUrl })), [images]);
   const imageMeta = useMemo(() => Object.fromEntries(images.map((i) => [i.id, { width: i.width, height: i.height, label: i.label }])), [images]);
   const pixels = useMemo(() => {
     const out: Record<string, string> = Object.fromEntries(images.map((i) => [i.id, i.dataUrl]));
@@ -525,7 +528,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
           key={`bar${sel}`}
           slide={deck.slides[sel]}
           deck={effective}
-          pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height, thumb: i.dataUrl }))}
+          pictures={choices}
           index={sel}
           count={deck.slides.length}
           layout={layoutOf(deck.slides[sel])}
@@ -639,7 +642,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               <SlideInsert
                 key={`ins${sel}`}
                 slide={deck.slides[sel]}
-                pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))}
+                pictures={choices}
                 onChange={(next: SlideContent, key) => change(updateSlide(deck, sel, next), `${sel}.${key}`)}
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
@@ -668,20 +671,20 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                   <option value="bold">Bold</option>
                 </select>
               </label>
-              <label className="block space-y-1">
+              <div className="block space-y-1">
                 <span className="text-xs font-medium text-[var(--ds-text-secondary)]">Background picture</span>
-                <select
+                <PictureSelect
+                  ariaLabel="Background picture"
                   value={deck.backgroundImage ?? ""}
-                  onChange={(e) => setDeckField("backgroundImage", e.target.value || undefined)}
-                  className={inputClass}
-                >
-                  <option value="">{labels.defaultPicture ?? "From the picture settings (default)"}</option>
-                  <option value="none">None</option>
-                  {images.map((i) => (
-                    <option key={i.id} value={i.id}>{i.id} · {i.label}</option>
-                  ))}
-                </select>
-              </label>
+                  buttonClassName="!text-sm !px-2.5 !py-1.5"
+                  options={[
+                    { value: "", label: labels.defaultPicture ?? "From the picture settings (default)" },
+                    { value: "none", label: "None" },
+                    ...choices.map((i) => ({ value: i.id, label: `${i.id} · ${i.label}`, thumb: i.thumb })),
+                  ]}
+                  onChange={(id) => setDeckField("backgroundImage", id || undefined)}
+                />
+              </div>
               <div className="space-y-2">
                 <span className="text-xs font-medium text-[var(--ds-text-secondary)]">Your pictures ({images.length} of 6)</span>
                 <p className="text-[11px] text-[var(--ds-text-muted)]">{isEditor ? (labels.readOnlyPicturesNote ?? "These pictures belong to someone else. They can be used here but not added or removed.") : (labels.picturesNote ?? "Used on picture slides and as the background.")}</p>
@@ -712,7 +715,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               <ElementPanel
                 key={`el${current}.${pickedNow.index}`}
                 slide={deck.slides[current]}
-                pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))}
+                pictures={choices}
                 index={pickedNow.index}
                 defaultTextColor={readableOn(((deck.slides[current] as unknown as { background?: unknown }).background as string | undefined) ?? effective.background ?? "FFFFFF")}
                 onSelect={(index) => setPickedBox({ slide: current, list: "elements", index })}
@@ -723,7 +726,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               <PicturePanel
                 key={`pic${current}.${pickedNow.index}`}
                 slide={deck.slides[current]}
-                pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))}
+                pictures={choices}
                 index={pickedNow.index}
                 onBack={() => setPickedBox(null)}
                 onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)}
@@ -731,7 +734,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
             ) : (
             <>
               <h2 className="text-sm font-semibold">Slide {current + 1}</h2>
-              <SlideForm key={current} slide={deck.slides[current]} pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))} activeElement={activeBox?.list === "elements" ? activeBox.index : null} onSelectElement={(index) => setPickedBox({ slide: current, list: "elements", index })} onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)} />
+              <SlideForm key={current} slide={deck.slides[current]} pictures={choices} activeElement={activeBox?.list === "elements" ? activeBox.index : null} onSelectElement={(index) => setPickedBox({ slide: current, list: "elements", index })} onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)} />
             </>
             )
           )}
@@ -741,7 +744,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               key={`look${sel}`}
               slide={deck.slides[sel]}
               deck={effective}
-              pictures={images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height }))}
+              pictures={choices}
               onChange={(next: SlideContent, key) => change(updateSlide(deck, sel, next), `${sel}.${key}`)}
               activePicture={activeBox?.list === "pictures" ? activeBox.index : null}
               onSelectPicture={(index) => setPickedBox({ slide: sel, list: "pictures", index })}

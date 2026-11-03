@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
-import { DeckEditor, type DeckEditorHost } from "../src/editor.js";
+import { DeckEditor, PicturePanel, type DeckEditorHost } from "../src/editor.js";
 import { normalizeDeck, EXAMPLE_DECK } from "../src/browser.js";
 
 // The editor has to work with nothing but a `host` object: no Ail app, no server. This renders it with a stand-in host.
@@ -47,5 +47,12 @@ describe("ail-files/editor", () => {
     const html = renderToString(createElement(DeckEditor, props));
     expect(html).not.toContain("Images &amp; logo");
     expect(html).not.toContain("encrypted");
+  });
+
+  it("labels the button that removes a placed picture, and shows its picture in the list", () => {
+    const slide = { layout: "bullets", title: "T", bullets: ["a"], pictures: [{ image: "img1", x: 1, y: 1, w: 2, h: 2 }] } as never;
+    const html = renderToString(createElement(PicturePanel, { slide, pictures: [{ id: "img1", label: "Poster", thumb: "data:image/png;base64,AAAA" }], index: 0, onChange: () => {}, onBack: () => {} }));
+    expect(html).toContain("Remove</button>");
+    expect(html).toContain("data:image/png;base64,AAAA"); // the closed picker shows what is chosen
   });
 });

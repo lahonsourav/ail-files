@@ -4,6 +4,7 @@ import { useState } from "react";
 import { newSlidePicture } from "../edit/deckEdit.js";
 import type { SlideContent } from "../pptx/presentationBuilder.js";
 import type { PictureChoice } from "./SlideForm.js";
+import PictureSelect from "./PictureSelect.js";
 import { hasSlideOptions, placedPictures, resetSlideOptions, setPlacedPictures } from "../edit/slideOptionsEdit.js";
 
 // Above the chat box: put a picture on the slide (one of the person's, or a new one from a file) and take back this slide's own look.
@@ -36,12 +37,14 @@ export default function SlideInsert({
     <div role="group" aria-label="Add to this slide" className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 sm:px-4 py-2 border-t border-[var(--ds-border-muted)] shrink-0">
       <span className="text-[11px] uppercase tracking-wide text-[var(--ds-text-muted)]">Pictures</span>
       {pictures.length > 0 && (
-        <select aria-label="Add one of my pictures" value="" onChange={(e) => e.target.value && place(e.target.value)} className="text-xs px-2 py-1 rounded-md bg-[var(--ds-bg-primary)] border border-[var(--ds-border-muted)] text-[var(--ds-accent)]">
-          <option value="">+ Add one of my pictures</option>
-          {pictures.map((x) => (
-            <option key={x.id} value={x.id}>{x.id} · {x.label}</option>
-          ))}
-        </select>
+        <PictureSelect
+          ariaLabel="Add one of my pictures"
+          accent
+          className="w-56"
+          value=""
+          options={[{ value: "", label: "+ Add one of my pictures", noSwatch: true }, ...pictures.map((x) => ({ value: x.id, label: `${x.id} · ${x.label}`, thumb: x.thumb }))]}
+          onChange={(id) => id && place(id)}
+        />
       )}
       {onUploadPicture && (
       <label className="text-xs font-medium text-[var(--ds-accent)] hover:underline cursor-pointer">
