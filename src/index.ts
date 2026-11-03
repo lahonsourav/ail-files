@@ -8,30 +8,26 @@ import { registerCommunityLayouts } from "./layouts/index.js";
 // Community layouts are always on, so { "layout": "pricing" } works out of the box.
 registerCommunityLayouts();
 
+// Everything that also works in a browser (see browser.ts): cleaning up decks and documents, the picture and logo rules, the
+// recorded drawing's types, the examples and every type.
+export * from "./browser.js";
+
 // PowerPoint
-export { buildPptx, recordDeck, FONT_PAIRS, DEFAULT_FONT_PAIR } from "./pptx/presentationBuilder.js";
-export type { SlideDeck, SlideContent, FontPairKey, BuildPptxOptions } from "./pptx/presentationBuilder.js";
-export type { RecordedDeck } from "./pptx/pptRecorded.js";
+export { buildPptx, recordDeck, slidePalette, FONT_PAIRS, DEFAULT_FONT_PAIR } from "./pptx/presentationBuilder.js";
 
 // The user's own logo and pictures. Both are export-time options (`buildPptx(deck, { logo, images })`), prepared first with
 // `prepareLogo` / `prepareImages` (checks the type and size, and reads the pixel size), and a deck names a picture by id (img1, img2...).
 export { prepareLogo } from "./pptx/pptLogoImage.js";
 export { prepareImages } from "./pptx/pptImagesPrepare.js";
-export { LOGO_CORNERS, LOGO_LIMITS, parseLogoRequest } from "./pptx/pptLogo.js";
-export type { PptLogo, LogoCorner } from "./pptx/pptLogo.js";
-export { IMAGE_LIMITS, imageIdsInDeck, deckHasPicturePlaceholders, isImageId } from "./pptx/pptImages.js";
-export type { PptImage } from "./pptx/pptImages.js";
 
 /**
- * Options this engine has that an older release may not. A program that needs one of them can check this list before relying on it
- * (the Ail app does, to choose between this engine and its own).
+ * Options this release has that an older one may not. A program that needs one of them can check this list before relying on it.
  */
 export const features = ["pptx.logo", "pptx.images"] as const;
-export { normalizeDeck, extractSlideDeck } from "./pptx/slideDeck.js";
-export { EXAMPLE_DECK } from "./pptx/exampleDeck.js";
+
+// Layouts
 export { defineLayout, registerLayout, getLayout, listLayouts, BUILTIN_LAYOUT_NAMES } from "./pptx/layoutRegistry.js";
 export type { CustomLayout, LayoutContext, LayoutHelpers } from "./pptx/layoutRegistry.js";
-export type { ThemeColors } from "./pptx/presentationBuilder.js";
 export { COMMUNITY_LAYOUTS, registerCommunityLayouts } from "./layouts/index.js";
 
 // Themes
@@ -41,19 +37,15 @@ export { importThemeFromPptx } from "./theme/importPptx.js";
 
 // PDF
 export { buildGeneralPdf } from "./pdf/pdfDocBuilder.js";
-export type { GeneralPdf, PdfSection, BuildGeneralPdfOptions } from "./pdf/pdfDocBuilder.js";
-export { normalizeGeneralPdf } from "./pdf/pdfDocExtract.js";
 export { closeBrowser } from "./pdf/htmlToPdf.js";
-export { EXAMPLE_PDF } from "./pdf/exampleGeneralPdf.js";
+// The pieces the PDF is made from, for a program that draws the same sections itself (the Ail app's other PDF exports).
+export { renderGeneralPdfHtml } from "./pdf/pdfDocHtml.js";
+export { renderBarChartSvg, renderPieChartSvg, renderPieLegend, computePieSlices, arcPath } from "./pdf/pdfDocCharts.js";
+export { escapeHtml, renderTextWithMath, getInlinedKatexCss } from "./pdf/pdfMath.js";
 
 // Word
 export { buildGeneralDocx } from "./docx/docxDocBuilder.js";
-export type { GeneralDocx, DocxSection, BuildGeneralDocxOptions } from "./docx/docxDocBuilder.js";
-export { normalizeGeneralDocx } from "./docx/docxDocExtract.js";
-export { EXAMPLE_DOCX } from "./docx/exampleGeneralDocx.js";
 
 // Excel
 export { buildGeneralExcel } from "./xlsx/excelBuilder.js";
-export type { GeneralExcel, ExcelSheet, BuildGeneralExcelOptions } from "./xlsx/excelBuilder.js";
-export { normalizeGeneralExcel } from "./xlsx/excelExtract.js";
-export { EXAMPLE_EXCEL } from "./xlsx/exampleGeneralExcel.js";
+
