@@ -9,7 +9,7 @@ import SlideLook, { PicturePanel } from "./SlideLook.js";
 import { placedPictures, setSlideOption, readableOn } from "../edit/slideOptionsEdit.js";
 import LockedParts from "./LockedParts.js";
 import FreeFormNote from "./FreeFormNote.js";
-import SlideAsk from "./SlideAsk.js";
+import SlideAsk, { type VoicePhase } from "./SlideAsk.js";
 import SuccessTick from "./SuccessTick.js";
 import { useFlip } from "./useFlip.js";
 import { MOTION, previewOrder } from "./motion.js";
@@ -368,6 +368,8 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     latestDeck.current = deck;
   });
   const [asking, setAsking] = useState(false);
+  // Talk mode (see SlideAsk): while it hears the person, or speaks back, the animated mark shows over the slide, as it does while the slide changes.
+  const [voicePhase, setVoicePhase] = useState<VoicePhase>("off");
   const [nudgeNote, setNudgeNote] = useState(false);
   const [askNote, setAskNote] = useState<{ kind: "done" | "error"; text: string } | null>(null);
   async function runAsk(prompt: string): Promise<string | null> {
@@ -656,9 +658,13 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 <div className="relative">
                   {shownSlide ? <SlideStage slide={shownSlide} assets={recorded!.assets} images={pixels} logoRound={logo.round} /> : <div className="aspect-video flex items-center justify-center text-xs text-[var(--ds-text-muted)]">Drawing your slide…</div>}
                   {fixedLayout && typeof sel === "number" && shownSlide && <LockedParts parts={lockedParts(shownSlide, movableBoxes(deck.slides[sel]).map((m) => m.box))} onTry={nudgeFreeForm} />}
-                  {(asking || heavy) && (
-                    <div className="slide-busy absolute inset-0 z-20 flex items-center justify-center bg-[var(--ds-bg-primary)]/70" aria-live="polite">
-                      {busyMark ?? <span role="status" aria-label="Updating the slide" className="inline-block h-8 w-8 rounded-full border-2 border-[var(--ds-border-muted)] border-t-[var(--ds-accent)] animate-spin" />}
+                  {(asking || heavy || voicePhase === "hearing" || voicePhase === "speaking") && (
+                    <div className={`slide-busy absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 ${asking || heavy ? "bg-[var(--ds-bg-primary)]/70" : "bg-[var(--ds-bg-primary)]/45"}`} aria-live="polite">
+                      <div className="relative flex items-center justify-center">
+                        {voicePhase === "hearing" && !asking && !heavy && <span aria-hidden="true" className="motion-safe:animate-ping absolute h-28 w-28 rounded-full border-2 border-[var(--ds-accent)] opacity-40" />}
+                        {busyMark ?? <span role="status" aria-label="Updating the slide" className="inline-block h-8 w-8 rounded-full border-2 border-[var(--ds-border-muted)] border-t-[var(--ds-accent)] animate-spin" />}
+                      </div>
+                      {voicePhase !== "off" && <p className="text-xs font-medium text-[var(--ds-text-secondary)]">{asking || heavy ? "Working on it…" : voicePhase === "speaking" ? "Speaking…" : "Listening…"}</p>}
                     </div>
                   )}
                   {typeof sel === "number" && shownSlide && (
@@ -686,7 +692,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
               />
-              <SlideAsk slideKey={sel} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
+              <SlideAsk slideKey={sel} onVoicePhase={setVoicePhase} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
             </>
           )}
         </section>
