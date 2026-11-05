@@ -1,0 +1,211 @@
+// Talking to the editor: the "Ask" box can listen instead of being typed into. The browser does the hearing (the Web Speech API), so there is
+// nothing to install and no audio goes to this package. `VoiceSession` is the part with rules, kept free of React and of the browser so it
+// can be tested: it listens, shows what it hears, waits for the person to stop talking, hands the sentence over once, and stays quiet while
+// the work is being done. The React side is in SlideAsk.tsx.
+
+/** The slice of the browser's SpeechRecognition that is used here. */
+export interface RecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: RecognitionEventLike) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+
+export interface RecognitionEventLike {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+}
+
+/** What the voice is doing: not on, listening, held while work is done, or unable to listen. */
+export type VoiceState = "off" | "listening" | "paused" | "blocked" | "unsupported";
+
+export const VOICE_PAUSE_MS = 2000;
+
+export interface VoiceOptions {
+  /** Makes a fresh recognizer, or null when the browser cannot listen. */
+  create: () => RecognitionLike | null;
+  lang: string;
+  /** How long a silence ends the sentence. */
+  pauseMs?: number;
+  /** What has been heard so far in this sentence, as it grows. */
+  onHeard: (text: string) => void;
+  /** The sentence is finished (the person paused). The session is already paused: call resume() when the work is done. */
+  onSentence: (text: string) => void;
+  onState: (state: VoiceState) => void;
+}
+
+export class VoiceSession {
+  private rec: RecognitionLike | null = null;
+  private wanted = false;
+  private held = false;
+  private carry = ""; // earlier recognizer runs of the same sentence (the browser ends a run now and then)
+  private run = ""; // the current run
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private restart: ReturnType<typeof setTimeout> | null = null;
+  private state: VoiceState = "off";
+
+  constructor(private readonly o: VoiceOptions) {}
+
+  private set(state: VoiceState) {
+    if (state !== this.state) {
+      this.state = state;
+      this.o.onState(state);
+    }
+  }
+
+  private text(): string {
+    return `${this.carry} ${this.run}`.replace(/\s+/g, " ").trim();
+  }
+
+  /** Turns the voice on. Call it from a tap, because browsers ask for the microphone only after one. */
+  start(): void {
+    this.wanted = true;
+    this.held = false;
+    this.begin();
+  }
+
+  /** Turns the voice off for good (until start() again). */
+  stop(): void {
+    this.wanted = false;
+    this.held = false;
+    this.clear();
+    this.end();
+    this.carry = "";
+    this.run = "";
+    this.set("off");
+  }
+
+  /** Holds the voice while work is done: nothing is heard, nothing is sent. */
+  pause(): void {
+    if (!this.wanted) return;
+    this.held = true;
+    this.clear();
+    this.end();
+    this.carry = "";
+    this.run = "";
+    this.set("paused");
+  }
+
+  /** Picks the voice up again after the work. */
+  resume(): void {
+    if (!this.wanted) return;
+    this.held = false;
+    this.begin();
+  }
+
+  private clear() {
+    if (this.timer) clearTimeout(this.timer);
+    if (this.restart) clearTimeout(this.restart);
+    this.timer = null;
+    this.restart = null;
+  }
+
+  private end() {
+    const rec = this.rec;
+    this.rec = null;
+    if (!rec) return;
+    rec.onresult = null;
+    rec.onerror = null;
+    rec.onend = null;
+    try {
+      rec.abort();
+    } catch {
+      /* already stopped */
+    }
+  }
+
+  private begin() {
+    if (!this.wanted || this.held || this.rec) return;
+    const rec = this.o.create();
+    if (!rec) {
+      this.wanted = false;
+      this.set("unsupported");
+      return;
+    }
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = this.o.lang;
+    rec.onresult = (event) => {
+      let heard = "";
+      for (let i = 0; i < event.results.length; i++) heard += `${event.results[i][0]?.transcript ?? ""} `;
+      this.run = heard;
+      const text = this.text();
+      if (text) this.o.onHeard(text);
+      if (this.timer) clearTimeout(this.timer);
+      // Every new word moves the end of the sentence back; two quiet seconds close it.
+      this.timer = setTimeout(() => this.finish(), this.o.pauseMs ?? VOICE_PAUSE_MS);
+    };
+    rec.onerror = (event) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        this.wanted = false;
+        this.clear();
+        this.end();
+        this.set("blocked");
+      }
+      // "no-speech", "aborted" and network blips just end the run: onend starts the next one.
+    };
+    rec.onend = () => {
+      // The browser ends a run after a while or on silence. Carry what was heard and listen again.
+      if (this.rec !== rec) return;
+      this.rec = null;
+      this.carry = this.text();
+      this.run = "";
+      if (this.wanted && !this.held) this.restart = setTimeout(() => this.begin(), 250);
+    };
+    this.rec = rec;
+    this.set("listening");
+    try {
+      rec.start();
+    } catch {
+      /* start() throws if a run is already open; the next onend retries */
+    }
+  }
+
+  private finish() {
+    this.timer = null;
+    const text = this.text();
+    if (!text) return;
+    this.pause();
+    this.o.onSentence(text);
+  }
+}
+
+/** Is this the person asking the voice to stop? ("stop", "stop listening", "stop voice", "turn off voice"...) */
+export function isStopCommand(text: string): boolean {
+  return /^(please )?(stop|turn off|end)( the)?( listening| voice| talking| mic| microphone)?[.!]?$/i.test(text.trim());
+}
+
+type RecognitionCtor = new () => RecognitionLike;
+
+/** The browser's recognizer, if it has one (Chrome, Edge and Safari do; Firefox does not). */
+export function browserRecognition(): RecognitionCtor | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+/** Says a short line aloud and resolves when it has been said (or after a safety timeout, or at once if the browser cannot speak). */
+export function speak(text: string, lang: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window) || !text.trim()) return resolve();
+    let done = false;
+    const finish = () => {
+      if (!done) {
+        done = true;
+        clearTimeout(guard);
+        resolve();
+      }
+    };
+    const guard = setTimeout(finish, 15000);
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    u.onend = finish;
+    u.onerror = finish;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  });
+}
