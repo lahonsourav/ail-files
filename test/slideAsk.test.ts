@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSlideReply, slideAskSystem, slideAskUser } from "../src/edit/slideAsk.js";
+import { parseSlideReply, slideAskSystem, slideAskUser, needsFreeForm } from "../src/edit/slideAsk.js";
 
 const images = [{ id: "img1", label: "Poster", description: "A poster of a lighthouse", width: 1600, height: 900 }];
 
@@ -71,4 +71,16 @@ describe("slide ask: text colour on a free-form slide", () => {
     const slide = parseSlideReply(reply) as unknown as { elements: { color?: string }[] };
     expect(slide.elements.map((e) => e.color)).toEqual(["FFFFFF", undefined]);
   });
+});
+
+describe("needsFreeForm", () => {
+  it.each([
+    "change the text colour to white",
+    "make the font bigger",
+    "make the title smaller",
+    "move the picture down",
+    "centre the text",
+    "Change the background to blue and text color to white and change the list to a table",
+  ])("is true for: %s", (p) => expect(needsFreeForm(p)).toBe(true));
+  it.each(["make the title shorter", "change the list to a table", "change the background to blue", "add a bullet about pricing", "translate this to Hindi"])("is false for: %s", (p) => expect(needsFreeForm(p)).toBe(false));
 });

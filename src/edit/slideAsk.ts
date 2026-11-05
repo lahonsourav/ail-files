@@ -8,6 +8,17 @@ import type { SlideContent, SlideDeck } from "../pptx/presentationBuilder.js";
 
 export const MAX_ASK_CHARS = 1000;
 
+const LOOK_WORDS = /\b(colou?rs?|fonts?|bold|italic|underline|bigger|larger|smaller|size|resize|move|moving|position|align|aligned|centre|center|spacing|gap|margin)\b/i;
+
+/**
+ * True when a request is about how the parts of a slide look or where they sit (text colour, font, size, moving things). A normal
+ * (fixed-layout) slide can only change its words and its own look settings, so for these requests the editor first turns the slide
+ * free-form (instant, no model) and then asks, so the request can actually be carried out.
+ */
+export function needsFreeForm(prompt: string): boolean {
+  return LOOK_WORDS.test(prompt);
+}
+
 const RULES =
   "You change ONE slide of a slide deck for the user. You are given the current slide as JSON and what they want changed. " +
   "Reply with ONLY the complete JSON object of the new slide: no code fence, no explanation, nothing before or after it. " +
