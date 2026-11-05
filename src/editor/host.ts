@@ -39,6 +39,8 @@ export interface AskArgs {
   total: number;
   deck: { title?: string; background?: string; accent?: string; fontPair?: string; backgroundImage?: string };
   images: { id: string; label: string; description?: string; width: number; height: number }[];
+  /** The request was spoken (talk mode), so the person is waiting for the answer to carry on talking: favour speed, for example with a quicker model. */
+  fast?: boolean;
 }
 
 export interface FreeFormArgs {
@@ -66,6 +68,8 @@ export interface DeckEditorHost {
   onRemoteChange?(): void;
   /** The model's new version of one slide ("Ask about this slide"), or an error to show. See `slideAskSystem` and `parseSlideReply` in ail-files/edit. */
   ask(args: AskArgs): Promise<{ slide?: SlideContent; error?: string }>;
+  /** Optional. In talk mode, a quick one-line spoken acknowledgement of the request ("Sure, making the title bigger."), from a fast model, asked for at the same time as `ask`. Null (or slower than about a second) and a generic line is said instead. */
+  acknowledge?(prompt: string): Promise<string | null>;
   /** A normal slide turned into a free-form one (see `slideToFreeForm` in ail-files/edit), or an error to show. */
   freeForm(args: FreeFormArgs): Promise<{ slide?: SlideContent; error?: string }>;
   /** The finished file. `missing` lists pictures that are not here; with `allowMissingPictures` the file is made without them. */

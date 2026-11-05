@@ -17,20 +17,25 @@ export interface RecognitionLike {
 }
 
 export interface RecognitionEventLike {
-  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+  results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }>;
 }
 
 /** What the voice is doing: not on, listening, held while work is done, or unable to listen. */
 export type VoiceState = "off" | "listening" | "paused" | "blocked" | "unsupported";
 
-export const VOICE_PAUSE_MS = 2000;
+/** How long a quiet spell ends the sentence while the browser is still unsure the person has finished. */
+export const VOICE_PAUSE_MS = 1300;
+/** How long after the browser itself marks the sentence final: it has already waited for silence, so only a short extra beat is needed. */
+export const VOICE_FINAL_PAUSE_MS = 600;
 
 export interface VoiceOptions {
   /** Makes a fresh recognizer, or null when the browser cannot listen. */
   create: () => RecognitionLike | null;
   lang: string;
-  /** How long a silence ends the sentence. */
+  /** How long a silence ends the sentence while the browser has not marked it final. */
   pauseMs?: number;
+  /** The shorter wait once the browser has marked the sentence final. */
+  finalPauseMs?: number;
   /** What has been heard so far in this sentence, as it grows. */
   onHeard: (text: string) => void;
   /** The sentence is finished (the person paused). The session is already paused: call resume() when the work is done. */
@@ -136,8 +141,11 @@ export class VoiceSession {
       const text = this.text();
       if (text) this.o.onHeard(text);
       if (this.timer) clearTimeout(this.timer);
-      // Every new word moves the end of the sentence back; two quiet seconds close it.
-      this.timer = setTimeout(() => this.finish(), this.o.pauseMs ?? VOICE_PAUSE_MS);
+      // Every new word moves the end of the sentence back. A quiet spell closes it: a short one when the browser has already decided the
+      // person is done (the last result is final), a little longer when it has not.
+      const last = event.results[event.results.length - 1];
+      const wait = last?.isFinal ? (this.o.finalPauseMs ?? VOICE_FINAL_PAUSE_MS) : (this.o.pauseMs ?? VOICE_PAUSE_MS);
+      this.timer = setTimeout(() => this.finish(), wait);
     };
     rec.onerror = (event) => {
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
@@ -179,6 +187,40 @@ export function isStopCommand(text: string): boolean {
   return /^(please )?(stop|turn off|end)( the)?( listening| voice| talking| mic| microphone)?[.!]?$/i.test(text.trim());
 }
 
+/** Moving about the deck by voice: next, previous, first, last, or a slide number. */
+export type NavCommand = { to: "next" | "previous" | "first" | "last" } | { to: "number"; n: number };
+
+const NUMBER_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+
+/**
+ * Recognises a whole sentence that only moves between slides: "next", "next slide", "go to the next page", "previous slide", "go back",
+ * "first slide", "last slide", "go to slide 3". Anything with more in it ("next, make the title bigger") is not a command, it is a request
+ * for the assistant. Slide numbers count from 1.
+ */
+export function parseNavCommand(text: string): NavCommand | null {
+  const t = text
+    .toLowerCase()
+    .replace(/[.,!?]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^((please|ok|okay|now) )+/, "")
+    .replace(/( (please|now))+$/, "");
+  const go = "(?:(?:go|move|jump|switch|turn|flip) (?:on )?(?:to |onto )?)?"; // "go to ", "move on to ", or nothing
+  const slide = "(?: (?:slide|page))?";
+  const the = "(?:the )?";
+  const word = (w: string) => new RegExp(`^${go}${the}(?:${w})${slide}$`).test(t);
+  if (word("next") || /^(go |move )?(on|forward|ahead)$/.test(t)) return { to: "next" };
+  if (word("previous|prev") || /^(go |move |turn |flip |jump )?(back|backward|backwards)( (one|a) (slide|page))?$/.test(t)) return { to: "previous" };
+  if (word("first|start|beginning")) return { to: "first" };
+  if (word("last|final")) return { to: "last" };
+  const num = new RegExp(`^${go}(?:slide|page) (\\d{1,3}|${Object.keys(NUMBER_WORDS).join("|")})$`).exec(t);
+  if (num) {
+    const n = NUMBER_WORDS[num[1]] ?? Number(num[1]);
+    if (n >= 1) return { to: "number", n };
+  }
+  return null;
+}
+
 type RecognitionCtor = new () => RecognitionLike;
 
 /** The browser's recognizer, if it has one (Chrome, Edge and Safari do; Firefox does not). */
@@ -186,6 +228,24 @@ export function browserRecognition(): RecognitionCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
+/** Browsers (iOS Safari above all) only let a page speak after something the person tapped. Call this inside the tap that starts talk mode, so replies can be spoken later. */
+export function primeSpeech(): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  try {
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+  } catch {
+    /* not available: replies just stay silent */
+  }
+}
+
+function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
+  const voices = window.speechSynthesis.getVoices();
+  const base = lang.slice(0, 2).toLowerCase();
+  return voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase()) ?? voices.find((v) => v.lang.toLowerCase().startsWith(base) && v.localService) ?? voices.find((v) => v.lang.toLowerCase().startsWith(base));
 }
 
 /** Says a short line aloud and resolves when it has been said (or after a safety timeout, or at once if the browser cannot speak). */
@@ -203,9 +263,55 @@ export function speak(text: string, lang: string): Promise<void> {
     const guard = setTimeout(finish, 15000);
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang;
+    const voice = pickVoice(lang);
+    if (voice) u.voice = voice;
     u.onend = finish;
     u.onerror = finish;
     window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
     window.speechSynthesis.speak(u);
   });
+}
+
+export interface NarrateOptions {
+  /** Says one line aloud and resolves when it has been said. */
+  say: (text: string) => Promise<void>;
+  /** A quick, specific acknowledgement ("Sure, making the title bigger.") that may or may not arrive in time. */
+  acknowledge: Promise<string | null>;
+  /** Said if the acknowledgement is not here after `ackWaitMs`, so the person hears something at once. */
+  generic: string;
+  /** Said, one at a time, while the work is still going, so it never goes quiet. */
+  fillers: string[];
+  ackWaitMs?: number;
+  fillerEveryMs?: number;
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Keeps the assistant talking while the work is done, so it feels active: an acknowledgement as soon as there is one (a specific one if it comes
+ * quickly, otherwise a generic one), then a short filler every few seconds while the work goes on. It stops the moment the work is over and
+ * resolves once whatever is being said has ended, so the caller can then say the result without talking over it. It never says anything for
+ * work that is already finished.
+ */
+export async function narrateWhile(work: Promise<unknown>, o: NarrateOptions): Promise<void> {
+  let finished = false;
+  void work.then(
+    () => (finished = true),
+    () => (finished = true),
+  );
+  // Settle `finished` before the first check (a promise that is already resolved needs a tick).
+  await Promise.resolve();
+  if (finished) return;
+
+  const specific = await Promise.race([o.acknowledge.catch(() => null), sleep(o.ackWaitMs ?? 900).then(() => undefined)]);
+  if (finished) return;
+  await o.say(specific || o.generic);
+
+  for (const filler of o.fillers) {
+    // Wait for the next gap, giving up the moment the work ends.
+    for (let waited = 0; waited < (o.fillerEveryMs ?? 3500) && !finished; waited += 100) await sleep(100);
+    if (finished) return;
+    await o.say(filler);
+  }
 }
