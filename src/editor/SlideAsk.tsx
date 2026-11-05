@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { VoiceSession, browserRecognition, isStopCommand, speak, type VoiceState } from "./voice.js";
+import { VoiceSession, browserRecognition, isStopCommand, primeSpeech, speak, type VoiceState } from "./voice.js";
 
 // The chat box under the slide: type what to change and the assistant rewrites this slide only, as one step the person can undo. It stays
 // put at the bottom of the middle column. `onSend` does the asking and returns an error message, or null when the slide was changed;
@@ -25,7 +25,7 @@ const SUGGESTIONS: [string, string][] = [
 const SPEAK_KEY = "ail-files:voice-speak";
 const noSubscribe = () => () => {};
 
-export default function SlideAsk({ onSend, busy, note, assistantName = "the assistant", slideKey, onVoicePhase }: { onSend: (prompt: string) => Promise<string | null>; busy: boolean; note: { kind: "done" | "error"; text: string } | null; /** What the person is asking: "Ail", "the assistant". */ assistantName?: string; /** The slide being asked about: the typed text starts afresh when it changes, while talk mode carries on. */ slideKey?: unknown; /** Told whenever talk mode moves between its phases, so the editor can show the mark over the slide. */ onVoicePhase?: (phase: VoicePhase) => void }) {
+export default function SlideAsk({ onSend, busy, note, assistantName = "the assistant", slideKey, onVoicePhase, spokenReply }: { onSend: (prompt: string, opts?: { voice?: boolean }) => Promise<string | null>; busy: boolean; note: { kind: "done" | "error"; text: string } | null; /** What the person is asking: "Ail", "the assistant". */ assistantName?: string; /** The slide being asked about: the typed text starts afresh when it changes, while talk mode carries on. */ slideKey?: unknown; /** Told whenever talk mode moves between its phases, so the editor can show the mark over the slide. */ onVoicePhase?: (phase: VoicePhase) => void; /** What to say aloud after a spoken request that worked ("Done. I changed the title."). Falls back to "Done." */ spokenReply?: () => string | undefined }) {
   const name = assistantName;
   const capitalName = name.charAt(0).toUpperCase() + name.slice(1);
   const [text, setText] = useState("");
@@ -38,18 +38,19 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
   // Talk mode.
   const canTalk = useSyncExternalStore(noSubscribe, () => !!browserRecognition(), () => false);
   const [voice, setVoice] = useState<VoiceState>("off");
+  // Replies are spoken unless the person has turned that off (the choice is remembered).
   const [speakBack, setSpeakBack] = useState(() => {
     try {
-      return typeof window !== "undefined" && window.localStorage.getItem(SPEAK_KEY) === "1";
+      return typeof window === "undefined" || window.localStorage.getItem(SPEAK_KEY) !== "0";
     } catch {
-      return false;
+      return true;
     }
   });
   const session = useRef<VoiceSession | null>(null);
   const inFlow = useRef(false); // true from a spoken sentence being sent until its work (and the spoken reply) is over
-  const live = useRef({ onSend, busy, speakBack });
+  const live = useRef({ onSend, busy, speakBack, spokenReply });
   useEffect(() => {
-    live.current = { onSend, busy, speakBack };
+    live.current = { onSend, busy, speakBack, spokenReply };
   });
   const lastPhase = useRef<VoicePhase>("off");
   function report(p: VoicePhase) {
@@ -68,10 +69,11 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
     }
     if (live.current.busy) return void v.resume();
     inFlow.current = true;
-    const problem = await live.current.onSend(sentence);
+    const problem = await live.current.onSend(sentence, { voice: true });
     if (live.current.speakBack) {
       report("speaking");
-      await speak(problem ?? "Done.", lang);
+      await new Promise((r) => setTimeout(r, 150)); // let the microphone let go of the audio before speaking (iOS)
+      await speak(problem ?? live.current.spokenReply?.() ?? "Done.", lang);
     }
     inFlow.current = false;
     report("idle");
@@ -84,6 +86,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
       return;
     }
+    primeSpeech(); // inside the tap, so replies can be spoken later
     session.current ??= new VoiceSession({
       create: () => {
         const C = browserRecognition();
@@ -153,7 +156,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
               <span className={`relative inline-flex h-3 w-3 rounded-full ${voice === "listening" && !busy ? "bg-[var(--ds-accent)]" : "bg-[var(--ds-text-muted)]"}`} />
             </span>
             <p className="flex-1 min-w-0 text-sm text-[var(--ds-text-secondary)]">
-              {busy ? `${capitalName} is on it. I will listen again when it is done.` : voice === "paused" ? "Paused." : "Listening. Just tell me what to change, and pause when you are done. Say \"stop\" to finish."}
+              {busy ? `${capitalName} is on it. I will listen again when it is done.` : voice === "paused" ? "Paused." : "Listening. Just tell me what to change. Say \"stop\" to finish."}
             </p>
             <label className="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-[var(--ds-text-secondary)] cursor-pointer">
               <input

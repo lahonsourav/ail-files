@@ -15,6 +15,7 @@ import { useFlip } from "./useFlip.js";
 import { MOTION, previewOrder } from "./motion.js";
 import { mergeDecks } from "../edit/deckMerge.js";
 import { moveDrawn } from "../edit/recordedMove.js";
+import { describeChange } from "../edit/describeChange.js";
 import SlideHandles, { type BoxRef } from "./SlideHandles.js";
 import ColorField from "./ColorField.js";
 import PictureSelect from "./PictureSelect.js";
@@ -370,12 +371,14 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const [asking, setAsking] = useState(false);
   // Talk mode (see SlideAsk): while it hears the person, or speaks back, the animated mark shows over the slide, as it does while the slide changes.
   const [voicePhase, setVoicePhase] = useState<VoicePhase>("off");
+  const spoken = useRef<string | undefined>(undefined); // what talk mode says after the last request
   const [nudgeNote, setNudgeNote] = useState(false);
   const [askNote, setAskNote] = useState<{ kind: "done" | "error"; text: string } | null>(null);
-  async function runAsk(prompt: string): Promise<string | null> {
+  async function runAsk(prompt: string, opts?: { voice?: boolean }): Promise<string | null> {
     setAsking(true);
     setAskNote(null);
-    const problem = await askSlide(prompt);
+    spoken.current = undefined;
+    const problem = await askSlide(prompt, opts);
     setAsking(false);
     setAskNote(problem ? { kind: "error", text: problem } : { kind: "done", text: "Done. Not what you wanted? Press Undo." });
     return problem;
@@ -404,7 +407,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     setAskNote(problem ? { kind: "error", text: problem } : { kind: "done", text: "This slide is free-form now. Drag its parts, or press Undo." });
     return problem;
   }
-  async function askSlide(prompt: string): Promise<string | null> {
+  async function askSlide(prompt: string, opts?: { voice?: boolean }): Promise<string | null> {
     if (typeof sel !== "number") return "Pick a slide first.";
     const index = sel;
     const original = deck.slides[index];
@@ -416,9 +419,11 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
         total: deck.slides.length,
         deck: { title: deck.title, background: deck.background, accent: deck.accent, fontPair: deck.fontPair, backgroundImage: effective.backgroundImage },
         images: images.map((i) => ({ id: i.id, label: i.label, description: i.description, width: i.width, height: i.height })),
+        ...(opts?.voice ? { fast: true } : {}),
       });
       if (!data.slide) return data.error ?? "Couldn't change the slide. Try again.";
       if (latestDeck.current.slides[index] !== original) return `The slide changed while ${assistantName} was working. Ask again.`;
+      spoken.current = describeChange(original, data.slide);
       change(updateSlide(latestDeck.current, index, data.slide), `${index}.ask.${Date.now()}`);
       return null;
     } catch {
@@ -692,7 +697,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
               />
-              <SlideAsk slideKey={sel} onVoicePhase={setVoicePhase} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
+              <SlideAsk slideKey={sel} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
             </>
           )}
         </section>

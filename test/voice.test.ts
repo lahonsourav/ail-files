@@ -20,6 +20,10 @@ class FakeRecognition implements RecognitionLike {
   say(...words: string[]) {
     this.onresult?.({ results: words.map((w) => [{ transcript: w }]) });
   }
+  /** The browser marks the last thing said as final. */
+  sayFinal(...words: string[]) {
+    this.onresult?.({ results: words.map((w) => Object.assign([{ transcript: w }], { isFinal: true })) });
+  }
 }
 
 function setup(over: { create?: () => RecognitionLike | null } = {}) {
@@ -41,7 +45,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe("talking to the editor", () => {
-  it("starts listening, shows what it hears, and sends the sentence after two quiet seconds", () => {
+  it("starts listening, follows what it hears, and sends the sentence after a quiet spell", () => {
     const { v, recs, heard, sentences, states } = setup();
     v.start();
     expect(states).toEqual(["listening"]);
@@ -51,21 +55,43 @@ describe("talking to the editor", () => {
     recs[0].say("make it");
     recs[0].say("make it shorter");
     expect(heard).toEqual(["make it", "make it shorter"]);
-    vi.advanceTimersByTime(1900);
-    expect(sentences).toEqual([]); // not yet: two seconds of quiet have not passed
+    vi.advanceTimersByTime(1200);
+    expect(sentences).toEqual([]); // not yet: the quiet spell has not passed
     vi.advanceTimersByTime(150);
     expect(sentences).toEqual(["make it shorter"]);
+  });
+
+  it("sends sooner once the browser itself marks the sentence final", () => {
+    const { v, recs, sentences } = setup();
+    v.start();
+    recs[0].sayFinal("make it shorter");
+    vi.advanceTimersByTime(500);
+    expect(sentences).toEqual([]);
+    vi.advanceTimersByTime(150);
+    expect(sentences).toEqual(["make it shorter"]);
+  });
+
+  it("goes back to the longer wait if the person carries on after a final result", () => {
+    const { v, recs, sentences } = setup();
+    v.start();
+    recs[0].sayFinal("make it shorter");
+    vi.advanceTimersByTime(400);
+    recs[0].say("make it shorter and");
+    vi.advanceTimersByTime(900);
+    expect(sentences).toEqual([]);
+    vi.advanceTimersByTime(500);
+    expect(sentences).toEqual(["make it shorter and"]);
   });
 
   it("keeps waiting while the person keeps talking: every new word moves the end back", () => {
     const { v, recs, sentences } = setup();
     v.start();
     recs[0].say("put my poster");
-    vi.advanceTimersByTime(1500);
+    vi.advanceTimersByTime(1000);
     recs[0].say("put my poster on the right");
-    vi.advanceTimersByTime(1500);
+    vi.advanceTimersByTime(1000);
     expect(sentences).toEqual([]);
-    vi.advanceTimersByTime(600);
+    vi.advanceTimersByTime(400);
     expect(sentences).toEqual(["put my poster on the right"]);
   });
 
@@ -73,7 +99,7 @@ describe("talking to the editor", () => {
     const { v, recs, sentences, states } = setup();
     v.start();
     recs[0].say("make it shorter");
-    vi.advanceTimersByTime(2100);
+    vi.advanceTimersByTime(1400);
     expect(states[states.length - 1]).toBe("paused");
     expect(recs[0].aborted).toBe(true);
     vi.advanceTimersByTime(5000);
@@ -82,7 +108,7 @@ describe("talking to the editor", () => {
     expect(states[states.length - 1]).toBe("listening");
     expect(recs).toHaveLength(2);
     recs[1].say("now make it darker");
-    vi.advanceTimersByTime(2100);
+    vi.advanceTimersByTime(1400);
     expect(sentences).toEqual(["make it shorter", "now make it darker"]);
   });
 
@@ -113,7 +139,7 @@ describe("talking to the editor", () => {
     vi.advanceTimersByTime(300);
     expect(recs).toHaveLength(2);
     recs[1].say("bigger");
-    vi.advanceTimersByTime(2100);
+    vi.advanceTimersByTime(1400);
     expect(sentences).toEqual(["make the title bigger"]);
   });
 

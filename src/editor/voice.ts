@@ -17,20 +17,25 @@ export interface RecognitionLike {
 }
 
 export interface RecognitionEventLike {
-  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+  results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }>;
 }
 
 /** What the voice is doing: not on, listening, held while work is done, or unable to listen. */
 export type VoiceState = "off" | "listening" | "paused" | "blocked" | "unsupported";
 
-export const VOICE_PAUSE_MS = 2000;
+/** How long a quiet spell ends the sentence while the browser is still unsure the person has finished. */
+export const VOICE_PAUSE_MS = 1300;
+/** How long after the browser itself marks the sentence final: it has already waited for silence, so only a short extra beat is needed. */
+export const VOICE_FINAL_PAUSE_MS = 600;
 
 export interface VoiceOptions {
   /** Makes a fresh recognizer, or null when the browser cannot listen. */
   create: () => RecognitionLike | null;
   lang: string;
-  /** How long a silence ends the sentence. */
+  /** How long a silence ends the sentence while the browser has not marked it final. */
   pauseMs?: number;
+  /** The shorter wait once the browser has marked the sentence final. */
+  finalPauseMs?: number;
   /** What has been heard so far in this sentence, as it grows. */
   onHeard: (text: string) => void;
   /** The sentence is finished (the person paused). The session is already paused: call resume() when the work is done. */
@@ -136,8 +141,11 @@ export class VoiceSession {
       const text = this.text();
       if (text) this.o.onHeard(text);
       if (this.timer) clearTimeout(this.timer);
-      // Every new word moves the end of the sentence back; two quiet seconds close it.
-      this.timer = setTimeout(() => this.finish(), this.o.pauseMs ?? VOICE_PAUSE_MS);
+      // Every new word moves the end of the sentence back. A quiet spell closes it: a short one when the browser has already decided the
+      // person is done (the last result is final), a little longer when it has not.
+      const last = event.results[event.results.length - 1];
+      const wait = last?.isFinal ? (this.o.finalPauseMs ?? VOICE_FINAL_PAUSE_MS) : (this.o.pauseMs ?? VOICE_PAUSE_MS);
+      this.timer = setTimeout(() => this.finish(), wait);
     };
     rec.onerror = (event) => {
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
@@ -188,6 +196,24 @@ export function browserRecognition(): RecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+/** Browsers (iOS Safari above all) only let a page speak after something the person tapped. Call this inside the tap that starts talk mode, so replies can be spoken later. */
+export function primeSpeech(): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  try {
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+  } catch {
+    /* not available: replies just stay silent */
+  }
+}
+
+function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
+  const voices = window.speechSynthesis.getVoices();
+  const base = lang.slice(0, 2).toLowerCase();
+  return voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase()) ?? voices.find((v) => v.lang.toLowerCase().startsWith(base) && v.localService) ?? voices.find((v) => v.lang.toLowerCase().startsWith(base));
+}
+
 /** Says a short line aloud and resolves when it has been said (or after a safety timeout, or at once if the browser cannot speak). */
 export function speak(text: string, lang: string): Promise<void> {
   return new Promise((resolve) => {
@@ -203,9 +229,12 @@ export function speak(text: string, lang: string): Promise<void> {
     const guard = setTimeout(finish, 15000);
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang;
+    const voice = pickVoice(lang);
+    if (voice) u.voice = voice;
     u.onend = finish;
     u.onerror = finish;
     window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
     window.speechSynthesis.speak(u);
   });
 }

@@ -39,6 +39,8 @@ export interface AskArgs {
   total: number;
   deck: { title?: string; background?: string; accent?: string; fontPair?: string; backgroundImage?: string };
   images: { id: string; label: string; description?: string; width: number; height: number }[];
+  /** The request was spoken (talk mode), so the person is waiting for the answer to carry on talking: favour speed, for example with a quicker model. */
+  fast?: boolean;
 }
 
 export interface FreeFormArgs {
