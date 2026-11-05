@@ -697,7 +697,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
               />
-              <SlideAsk slideKey={sel} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
+              <SlideAsk slideKey={sel} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
             </>
           )}
         </section>

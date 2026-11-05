@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VoiceSession, isStopCommand, type RecognitionEventLike, type RecognitionLike, type VoiceState } from "../src/editor/voice.js";
+import { VoiceSession, isStopCommand, narrateWhile, type RecognitionEventLike, type RecognitionLike, type VoiceState } from "../src/editor/voice.js";
 
 class FakeRecognition implements RecognitionLike {
   continuous = false;
@@ -186,5 +186,59 @@ describe("the stop command", () => {
   it("recognises the spoken ways of ending talk mode, and nothing else", () => {
     for (const s of ["stop", "Stop.", "stop listening", "please stop", "turn off voice", "end the voice", "stop talking"]) expect(isStopCommand(s), s).toBe(true);
     for (const s of ["stop the title from wrapping", "make it shorter", "don't stop", "bus stop sign on the right"]) expect(isStopCommand(s), s).toBe(false);
+  });
+});
+
+describe("keeping the assistant talking while it works", () => {
+  const setupNarration = (work: Promise<unknown>, ack: Promise<string | null>, over: Partial<Parameters<typeof narrateWhile>[1]> = {}) => {
+    const said: string[] = [];
+    const done = narrateWhile(work, {
+      say: (t) => (said.push(t), new Promise((r) => setTimeout(r, 400))), // each line takes 0.4 s to say
+      acknowledge: ack,
+      generic: "Okay, working on it.",
+      fillers: ["Still on it.", "Almost there."],
+      ...over,
+    });
+    return { said, done };
+  };
+  const later = <T>(ms: number, v: T) => new Promise<T>((r) => setTimeout(() => r(v), ms));
+
+  it("says the specific acknowledgement when it arrives quickly, then a filler while the work goes on", async () => {
+    const { said, done } = setupNarration(later(6000, "ok"), later(300, "Sure, making the title bigger."));
+    await vi.advanceTimersByTimeAsync(400);
+    expect(said).toEqual(["Sure, making the title bigger."]);
+    await vi.advanceTimersByTimeAsync(4300);
+    expect(said).toEqual(["Sure, making the title bigger.", "Still on it."]);
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    expect(said).toContain("Still on it.");
+  });
+
+  it("says a generic line when the specific one is slow, and drops the late one", async () => {
+    const { said, done } = setupNarration(later(3000, "ok"), later(2500, "Sure, making the title bigger."));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(said).toEqual(["Okay, working on it."]);
+    await vi.advanceTimersByTimeAsync(3000);
+    await done;
+    expect(said).not.toContain("Sure, making the title bigger.");
+  });
+
+  it("says nothing for work that is already done, and stops the moment the work finishes", async () => {
+    const quick = setupNarration(Promise.resolve("ok"), later(100, "Sure."));
+    await vi.advanceTimersByTimeAsync(50);
+    await quick.done;
+    expect(quick.said).toEqual([]);
+
+    const { said, done } = setupNarration(later(1500, "ok"), later(100, "Sure, making it darker."));
+    await vi.advanceTimersByTimeAsync(5000);
+    await done;
+    expect(said).toEqual(["Sure, making it darker."]); // no filler: the work ended before the first one was due
+  });
+
+  it("does not fail when the work fails or the acknowledgement fails", async () => {
+    const failed = setupNarration(later(1000, null).then(() => Promise.reject(new Error("x"))), Promise.reject(new Error("no ack")));
+    failed.done.catch(() => {});
+    await vi.advanceTimersByTimeAsync(3000);
+    await expect(failed.done).resolves.toBeUndefined();
   });
 });

@@ -238,3 +238,46 @@ export function speak(text: string, lang: string): Promise<void> {
     window.speechSynthesis.speak(u);
   });
 }
+
+export interface NarrateOptions {
+  /** Says one line aloud and resolves when it has been said. */
+  say: (text: string) => Promise<void>;
+  /** A quick, specific acknowledgement ("Sure, making the title bigger.") that may or may not arrive in time. */
+  acknowledge: Promise<string | null>;
+  /** Said if the acknowledgement is not here after `ackWaitMs`, so the person hears something at once. */
+  generic: string;
+  /** Said, one at a time, while the work is still going, so it never goes quiet. */
+  fillers: string[];
+  ackWaitMs?: number;
+  fillerEveryMs?: number;
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Keeps the assistant talking while the work is done, so it feels active: an acknowledgement as soon as there is one (a specific one if it comes
+ * quickly, otherwise a generic one), then a short filler every few seconds while the work goes on. It stops the moment the work is over and
+ * resolves once whatever is being said has ended, so the caller can then say the result without talking over it. It never says anything for
+ * work that is already finished.
+ */
+export async function narrateWhile(work: Promise<unknown>, o: NarrateOptions): Promise<void> {
+  let finished = false;
+  void work.then(
+    () => (finished = true),
+    () => (finished = true),
+  );
+  // Settle `finished` before the first check (a promise that is already resolved needs a tick).
+  await Promise.resolve();
+  if (finished) return;
+
+  const specific = await Promise.race([o.acknowledge.catch(() => null), sleep(o.ackWaitMs ?? 900).then(() => undefined)]);
+  if (finished) return;
+  await o.say(specific || o.generic);
+
+  for (const filler of o.fillers) {
+    // Wait for the next gap, giving up the moment the work ends.
+    for (let waited = 0; waited < (o.fillerEveryMs ?? 3500) && !finished; waited += 100) await sleep(100);
+    if (finished) return;
+    await o.say(filler);
+  }
+}
