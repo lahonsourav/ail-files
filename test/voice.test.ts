@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VoiceSession, isStopCommand, narrateWhile, type RecognitionEventLike, type RecognitionLike, type VoiceState } from "../src/editor/voice.js";
+import { VoiceSession, isStopCommand, narrateWhile, parseNavCommand, type RecognitionEventLike, type RecognitionLike, type VoiceState } from "../src/editor/voice.js";
 
 class FakeRecognition implements RecognitionLike {
   continuous = false;
@@ -241,4 +241,29 @@ describe("keeping the assistant talking while it works", () => {
     await vi.advanceTimersByTimeAsync(3000);
     await expect(failed.done).resolves.toBeUndefined();
   });
+});
+
+describe("moving between slides by voice", () => {
+  it.each([
+    ["next", { to: "next" }],
+    ["Next slide.", { to: "next" }],
+    ["go to next page", { to: "next" }],
+    ["Go to the next slide please", { to: "next" }],
+    ["okay next slide", { to: "next" }],
+    ["move on", { to: "next" }],
+    ["go forward", { to: "next" }],
+    ["previous slide", { to: "previous" }],
+    ["go to the previous page", { to: "previous" }],
+    ["go back", { to: "previous" }],
+    ["back", { to: "previous" }],
+    ["first slide", { to: "first" }],
+    ["go to the beginning", { to: "first" }],
+    ["last slide", { to: "last" }],
+    ["go to the final page", { to: "last" }],
+    ["go to slide 3", { to: "number", n: 3 }],
+    ["slide five", { to: "number", n: 5 }],
+    ["Go to page 12.", { to: "number", n: 12 }],
+  ])("%s", (said, want) => expect(parseNavCommand(said)).toEqual(want));
+
+  it.each(["next, make the title bigger", "make the next slide shorter", "go to slide zero", "the next big thing", "make the text bigger", "stop", ""])("is not a command: %s", (said) => expect(parseNavCommand(said)).toBeNull());
 });

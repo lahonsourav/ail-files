@@ -10,6 +10,7 @@ import { placedPictures, setSlideOption, readableOn } from "../edit/slideOptions
 import LockedParts from "./LockedParts.js";
 import FreeFormNote from "./FreeFormNote.js";
 import SlideAsk, { type VoicePhase } from "./SlideAsk.js";
+import type { NavCommand } from "./voice.js";
 import SuccessTick from "./SuccessTick.js";
 import { useFlip } from "./useFlip.js";
 import { MOTION, previewOrder } from "./motion.js";
@@ -374,6 +375,17 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const spoken = useRef<string | undefined>(undefined); // what talk mode says after the last request
   const [nudgeNote, setNudgeNote] = useState(false);
   const [askNote, setAskNote] = useState<{ kind: "done" | "error"; text: string } | null>(null);
+  // "Next slide", "go back", "slide 3" spoken in talk mode. Returns what to say aloud.
+  function goBySpeech(c: NavCommand): string {
+    const count = deck.slides.length;
+    const at = typeof sel === "number" ? sel : -1;
+    const to = c.to === "next" ? at + 1 : c.to === "previous" ? (at < 0 ? 0 : at - 1) : c.to === "first" ? 0 : c.to === "last" ? count - 1 : c.to === "number" ? c.n - 1 : at;
+    if (to < 0) return "This is the first slide.";
+    if (to >= count) return c.to === "next" ? "This is the last slide." : `There are only ${count} slides.`;
+    if (to === at) return c.to === "first" ? "This is the first slide." : c.to === "last" ? "This is the last slide." : `Slide ${to + 1}.`;
+    setSelected(to);
+    return `Slide ${to + 1}.`;
+  }
   async function runAsk(prompt: string, opts?: { voice?: boolean }): Promise<string | null> {
     setAsking(true);
     setAskNote(null);
@@ -697,7 +709,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
               />
-              <SlideAsk slideKey={sel} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
+              <SlideAsk slideKey={sel} onNavigate={goBySpeech} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
             </>
           )}
         </section>

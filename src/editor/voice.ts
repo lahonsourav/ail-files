@@ -187,6 +187,40 @@ export function isStopCommand(text: string): boolean {
   return /^(please )?(stop|turn off|end)( the)?( listening| voice| talking| mic| microphone)?[.!]?$/i.test(text.trim());
 }
 
+/** Moving about the deck by voice: next, previous, first, last, or a slide number. */
+export type NavCommand = { to: "next" | "previous" | "first" | "last" } | { to: "number"; n: number };
+
+const NUMBER_WORDS: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
+
+/**
+ * Recognises a whole sentence that only moves between slides: "next", "next slide", "go to the next page", "previous slide", "go back",
+ * "first slide", "last slide", "go to slide 3". Anything with more in it ("next, make the title bigger") is not a command, it is a request
+ * for the assistant. Slide numbers count from 1.
+ */
+export function parseNavCommand(text: string): NavCommand | null {
+  const t = text
+    .toLowerCase()
+    .replace(/[.,!?]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^((please|ok|okay|now) )+/, "")
+    .replace(/( (please|now))+$/, "");
+  const go = "(?:(?:go|move|jump|switch|turn|flip) (?:on )?(?:to |onto )?)?"; // "go to ", "move on to ", or nothing
+  const slide = "(?: (?:slide|page))?";
+  const the = "(?:the )?";
+  const word = (w: string) => new RegExp(`^${go}${the}(?:${w})${slide}$`).test(t);
+  if (word("next") || /^(go |move )?(on|forward|ahead)$/.test(t)) return { to: "next" };
+  if (word("previous|prev") || /^(go |move |turn |flip |jump )?(back|backward|backwards)( (one|a) (slide|page))?$/.test(t)) return { to: "previous" };
+  if (word("first|start|beginning")) return { to: "first" };
+  if (word("last|final")) return { to: "last" };
+  const num = new RegExp(`^${go}(?:slide|page) (\\d{1,3}|${Object.keys(NUMBER_WORDS).join("|")})$`).exec(t);
+  if (num) {
+    const n = NUMBER_WORDS[num[1]] ?? Number(num[1]);
+    if (n >= 1) return { to: "number", n };
+  }
+  return null;
+}
+
 type RecognitionCtor = new () => RecognitionLike;
 
 /** The browser's recognizer, if it has one (Chrome, Edge and Safari do; Firefox does not). */

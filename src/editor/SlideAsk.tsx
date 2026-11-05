@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { VoiceSession, browserRecognition, isStopCommand, narrateWhile, primeSpeech, speak, type VoiceState } from "./voice.js";
+import { VoiceSession, browserRecognition, isStopCommand, narrateWhile, parseNavCommand, primeSpeech, speak, type NavCommand, type VoiceState } from "./voice.js";
 
 // The chat box under the slide: type what to change and the assistant rewrites this slide only, as one step the person can undo. It stays
 // put at the bottom of the middle column. `onSend` does the asking and returns an error message, or null when the slide was changed;
@@ -28,7 +28,7 @@ const WORKING_LINES = ["Okay, working on it.", "Still on it.", "Just a moment mo
 const SPEAK_KEY = "ail-files:voice-speak";
 const noSubscribe = () => () => {};
 
-export default function SlideAsk({ onSend, busy, note, assistantName = "the assistant", slideKey, onVoicePhase, spokenReply, acknowledge }: { onSend: (prompt: string, opts?: { voice?: boolean }) => Promise<string | null>; busy: boolean; note: { kind: "done" | "error"; text: string } | null; /** What the person is asking: "Ail", "the assistant". */ assistantName?: string; /** The slide being asked about: the typed text starts afresh when it changes, while talk mode carries on. */ slideKey?: unknown; /** Told whenever talk mode moves between its phases, so the editor can show the mark over the slide. */ onVoicePhase?: (phase: VoicePhase) => void; /** What to say aloud after a spoken request that worked ("Done. I changed the title."). Falls back to "Done." */ spokenReply?: () => string | undefined; /** A quick one-line spoken acknowledgement of the request ("Sure, making the title bigger."), asked for in parallel with the real work so the assistant can answer at once. Null or slow: a generic line is said instead. */ acknowledge?: (prompt: string) => Promise<string | null> }) {
+export default function SlideAsk({ onSend, busy, note, assistantName = "the assistant", slideKey, onVoicePhase, spokenReply, acknowledge, onNavigate }: { onSend: (prompt: string, opts?: { voice?: boolean }) => Promise<string | null>; busy: boolean; note: { kind: "done" | "error"; text: string } | null; /** What the person is asking: "Ail", "the assistant". */ assistantName?: string; /** The slide being asked about: the typed text starts afresh when it changes, while talk mode carries on. */ slideKey?: unknown; /** Told whenever talk mode moves between its phases, so the editor can show the mark over the slide. */ onVoicePhase?: (phase: VoicePhase) => void; /** What to say aloud after a spoken request that worked ("Done. I changed the title."). Falls back to "Done." */ spokenReply?: () => string | undefined; /** A quick one-line spoken acknowledgement of the request ("Sure, making the title bigger."), asked for in parallel with the real work so the assistant can answer at once. Null or slow: a generic line is said instead. */ acknowledge?: (prompt: string) => Promise<string | null>; /** Moves to another slide for a spoken "next slide", "go back", "slide 3"; returns what to say aloud ("Slide 3."). */ onNavigate?: (command: NavCommand) => string }) {
   const name = assistantName;
   const capitalName = name.charAt(0).toUpperCase() + name.slice(1);
   const [text, setText] = useState("");
@@ -51,9 +51,9 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
   });
   const session = useRef<VoiceSession | null>(null);
   const inFlow = useRef(false); // true from a spoken sentence being sent until its work (and the spoken reply) is over
-  const live = useRef({ onSend, busy, speakBack, spokenReply, acknowledge });
+  const live = useRef({ onSend, busy, speakBack, spokenReply, acknowledge, onNavigate });
   useEffect(() => {
-    live.current = { onSend, busy, speakBack, spokenReply, acknowledge };
+    live.current = { onSend, busy, speakBack, spokenReply, acknowledge, onNavigate };
   });
   const lastPhase = useRef<VoicePhase>("off");
   function report(p: VoicePhase) {
@@ -71,6 +71,21 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
       return;
     }
     if (live.current.busy) return void v.resume();
+    const nav = live.current.onNavigate ? parseNavCommand(sentence) : null;
+    if (nav) {
+      // Moving about the deck is not a request to the assistant: no waiting, no overlay, just the slide changing and a word to say where we are.
+      const said = live.current.onNavigate!(nav);
+      if (live.current.speakBack) {
+        inFlow.current = true;
+        v.pause();
+        await new Promise((r) => setTimeout(r, 150));
+        await speak(said, lang);
+        inFlow.current = false;
+      }
+      report("idle");
+      v.resume();
+      return;
+    }
     inFlow.current = true;
     const work = live.current.onSend(sentence, { voice: true });
     if (live.current.speakBack) {
