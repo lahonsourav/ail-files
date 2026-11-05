@@ -17,6 +17,7 @@ import { MOTION, previewOrder } from "./motion.js";
 import { mergeDecks } from "../edit/deckMerge.js";
 import { moveDrawn } from "../edit/recordedMove.js";
 import { describeChange } from "../edit/describeChange.js";
+import { needsFreeForm } from "../edit/slideAsk.js";
 import SlideHandles, { type BoxRef } from "./SlideHandles.js";
 import ColorField from "./ColorField.js";
 import PictureSelect from "./PictureSelect.js";
@@ -423,10 +424,29 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     if (typeof sel !== "number") return "Pick a slide first.";
     const index = sel;
     const original = deck.slides[index];
+    // A normal slide can only change its words and its own look settings. For a spoken request about colours, fonts, sizes or moving things,
+    // turn this one slide free-form first (instant, no model, one undo step together with the change), so the request can be carried out.
+    let base = original;
+    let converted = false;
+    if (opts?.voice && layoutOf(original) !== "canvas" && needsFreeForm(prompt)) {
+      try {
+        const ff = await host.freeForm({
+          slide: original,
+          deck: { background: deck.background, accent: deck.accent, fontPair: deck.fontPair },
+          images: images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height })),
+        });
+        if (ff.slide) {
+          base = ff.slide;
+          converted = true;
+        }
+      } catch {
+        /* carry on with the slide as it is */
+      }
+    }
     try {
       const data = await host.ask({
         prompt,
-        slide: original,
+        slide: base,
         index,
         total: deck.slides.length,
         deck: { title: deck.title, background: deck.background, accent: deck.accent, fontPair: deck.fontPair, backgroundImage: effective.backgroundImage },
@@ -435,7 +455,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
       });
       if (!data.slide) return data.error ?? "Couldn't change the slide. Try again.";
       if (latestDeck.current.slides[index] !== original) return `The slide changed while ${assistantName} was working. Ask again.`;
-      spoken.current = describeChange(original, data.slide);
+      spoken.current = (converted ? "Free-form is on for this slide. " : "") + describeChange(base, data.slide);
       change(updateSlide(latestDeck.current, index, data.slide), `${index}.ask.${Date.now()}`);
       return null;
     } catch {
