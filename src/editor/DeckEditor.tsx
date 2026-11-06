@@ -113,7 +113,20 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const [missingPictures, setMissingPictures] = useState(false); // the last download stopped because pictures are not on this device
   const [versions, setVersions] = useState<{ id: string; version: number; createdAt: string }[] | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null); // the "+ Add slide" menu at the end of the strip
+  const addAfterRef = useRef<HTMLDivElement>(null); // the templates opened under the selected slide
   const [addAfter, setAddAfter] = useState<number | null>(null); // the slide whose templates are showing under it in the strip
+  // A template list that opens near the bottom of the strip must not stay half off the screen: scroll the strip so the whole list shows
+  // (after the opening animation for the one under a slide).
+  useEffect(() => {
+    if (!addOpen) return;
+    addMenuRef.current?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }, [addOpen]);
+  useEffect(() => {
+    if (addAfter === null) return;
+    const t = setTimeout(() => addAfterRef.current?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" }), 380);
+    return () => clearTimeout(t);
+  }, [addAfter]);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null); // where the dragged slide would land if let go now: the others slide to make room
   const [savedCount, setSavedCount] = useState(0); // how many saves have finished, so the tick by "Saved" plays again for each
@@ -529,7 +542,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const shownSlide = recorded?.slides[(sel === "deck" ? 0 : sel + offset)];
 
   return (
-    <div className="min-h-screen lg:h-screen lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
+    <div className="min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
       <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shrink-0">
         {back}
         <h1 className="text-sm font-semibold truncate min-w-0 flex-1">{deck.title ?? "Untitled deck"}</h1>
@@ -660,7 +673,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                     {/* Opens by growing, ease-out, 350 ms: fast first, then slow. */}
                     <div data-open={addAfter === i} inert={addAfter !== i} className="grid grid-rows-[0fr] data-[open=true]:grid-rows-[1fr] opacity-0 data-[open=true]:opacity-100 transition-[grid-template-rows,opacity] duration-[350ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none">
                       <div className="min-h-0 overflow-hidden">
-                        <div role="group" aria-label="Slide templates" className="mt-1.5 grid grid-cols-2 gap-1.5">
+                        <div ref={addAfter === i ? addAfterRef : undefined} role="group" aria-label="Slide templates" className="mt-1.5 grid grid-cols-2 gap-1.5">
                           {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
                             <button key={layout} type="button" onClick={() => add(layout)} className="text-left text-[11px] leading-tight px-2 py-2 rounded-md border border-[var(--ds-border-muted)] bg-[var(--ds-bg-primary)] hover:border-[var(--ds-accent)]">{t.label}</button>
                           ))}
@@ -677,7 +690,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 + Add slide
               </button>
               {addOpen && (
-                <div role="menu" className="absolute left-0 lg:left-0 bottom-full lg:bottom-auto lg:top-full mt-1 z-20 w-52 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
+                <div ref={addMenuRef} role="menu" className="absolute left-0 bottom-full lg:static lg:bottom-auto lg:w-full mt-1 z-20 w-52 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
                   {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
                     <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-2.5 py-1.5 rounded-md hover:bg-[var(--ds-bg-hover)]">{t.label}</button>
                   ))}
