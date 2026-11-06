@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { LAYOUT_LABELS } from "../edit/deckEdit.js";
 import type { SlideContent, SlideDeck } from "../pptx/presentationBuilder.js";
 import type { PictureChoice } from "./SlideForm.js";
@@ -10,9 +11,9 @@ import { setSlideOption, TEXT_SIZES } from "../edit/slideOptionsEdit.js";
 // (layout, font style, text size, page number, logo, background picture). Colours and placed pictures are in the right column.
 
 const selectClass =
-  "text-xs px-2 py-1.5 rounded-md bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] focus:border-[var(--ds-accent)] outline-none disabled:opacity-50";
+  "text-xs pointer-coarse:text-sm px-2 py-1.5 pointer-coarse:py-2.5 rounded-md bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] focus:border-[var(--ds-accent)] outline-none disabled:opacity-50";
 const buttonClass =
-  "px-2 py-1.5 rounded-md text-xs font-medium text-[var(--ds-text-secondary)] hover:text-[var(--ds-text-primary)] hover:bg-[var(--ds-bg-hover)] disabled:opacity-30 disabled:hover:bg-transparent transition-colors";
+  "px-2 py-1.5 pointer-coarse:px-3 pointer-coarse:py-2.5 rounded-md text-xs font-medium text-[var(--ds-text-secondary)] hover:text-[var(--ds-text-primary)] hover:bg-[var(--ds-bg-hover)] disabled:opacity-30 disabled:hover:bg-transparent transition-colors";
 
 const layoutName = (key: string) => (key === "advanced_table" ? "Table with sorting" : LAYOUT_LABELS[key] ?? key);
 
@@ -50,6 +51,7 @@ export default function SlideToolbar({
   /** What rebuilds the slide when a layout is picked: "Ail", "the assistant". */
   assistantName?: string;
 }) {
+  const [moreOpen, setMoreOpen] = useState(false);
   const fields = slide as unknown as Record<string, unknown>;
   const set = (key: Parameters<typeof setSlideOption>[1], value: unknown) => onChange(setSlideOption(slide, key, value), `opt.${key}`);
   const picture = typeof fields.backgroundImage === "string" ? fields.backgroundImage : "";
@@ -97,6 +99,11 @@ export default function SlideToolbar({
       </select>
       <span aria-hidden className="mx-1.5 h-5 w-px bg-[var(--ds-border-muted)] hidden sm:block" />
 
+      {/* On a tablet the less-used controls wait behind "More", so the bar stays one row and leaves the room to the slide. */}
+      <button type="button" onClick={() => setMoreOpen((o) => !o)} aria-expanded={moreOpen} className={`${buttonClass} xl:hidden`}>
+        {moreOpen ? "Fewer" : "More"}
+      </button>
+      <div className={`${moreOpen ? "flex basis-full" : "hidden"} xl:contents flex-wrap items-center gap-x-1 gap-y-1.5`}>
       <label className="flex items-center gap-1.5 text-xs text-[var(--ds-text-primary)] px-1">
         <input type="checkbox" checked={fields.pageNumber !== false} onChange={(e) => set("pageNumber", e.target.checked ? undefined : false)} />
         Page number
@@ -134,6 +141,7 @@ export default function SlideToolbar({
           />
           All slides
         </label>
+      </div>
       </div>
     </div>
   );

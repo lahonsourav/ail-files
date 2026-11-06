@@ -9,7 +9,7 @@ import SlideLook, { PicturePanel } from "./SlideLook.js";
 import { placedPictures, setSlideOption, readableOn } from "../edit/slideOptionsEdit.js";
 import LockedParts from "./LockedParts.js";
 import FreeFormNote from "./FreeFormNote.js";
-import SlideAsk, { type VoicePhase } from "./SlideAsk.js";
+import SlideAsk, { type VoiceCommand, type VoiceCommandResult, type VoicePhase } from "./SlideAsk.js";
 import type { NavCommand } from "./voice.js";
 import SuccessTick from "./SuccessTick.js";
 import { useFlip } from "./useFlip.js";
@@ -24,7 +24,7 @@ import PictureSelect from "./PictureSelect.js";
 import { addSlide, canRedo, canUndo, commit, createHistory, deleteSlide, duplicateSlide, LAYOUT_LABELS, layoutOf, moveSlide, NEW_SLIDE_TEMPLATES, newSlide, redo, setAt, undo, updateSlide, removeAt, insertAt, movableBoxes, lockedParts, setBox, type Box } from "../edit/deckEdit.js";
 import type { FontPairKey, SlideContent, SlideDeck } from "../pptx/presentationBuilder.js";
 import type { RecordedDeck } from "../pptx/pptRecorded.js";
-import { saveBlob, type DeckEditorHost, type EditorLogo, type EditorPicture } from "./host.js";
+import { saveBlob, type DeckEditorHost, type EditorLogo, type EditorPicture, type VoiceEvent } from "./host.js";
 
 // The deck editor: the slides down the left, the selected slide as the download will draw it, and its fields on the right. Every
 // change is a new deck (edit/deckEdit.ts), drawn again by the host with the export's own code (host.preview, which calls recordDeck) and
@@ -113,7 +113,20 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const [missingPictures, setMissingPictures] = useState(false); // the last download stopped because pictures are not on this device
   const [versions, setVersions] = useState<{ id: string; version: number; createdAt: string }[] | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null); // the "+ Add slide" menu at the end of the strip
+  const addAfterRef = useRef<HTMLDivElement>(null); // the templates opened under the selected slide
   const [addAfter, setAddAfter] = useState<number | null>(null); // the slide whose templates are showing under it in the strip
+  // A template list that opens near the bottom of the strip must not stay half off the screen: scroll the strip so the whole list shows
+  // (after the opening animation for the one under a slide).
+  useEffect(() => {
+    if (!addOpen) return;
+    addMenuRef.current?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }, [addOpen]);
+  useEffect(() => {
+    if (addAfter === null) return;
+    const t = setTimeout(() => addAfterRef.current?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" }), 380);
+    return () => clearTimeout(t);
+  }, [addAfter]);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null); // where the dragged slide would land if let go now: the others slide to make room
   const [savedCount, setSavedCount] = useState(0); // how many saves have finished, so the tick by "Saved" plays again for each
@@ -293,6 +306,20 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   }, [host, savedDeck]);
 
   // ── Undo and redo ────────────────────────────────────────────────────────────────────────────────
+  // What talk mode reports to the host (never words). An undo soon after a spoken change is the sign that it was misheard or misread.
+  const track = (event: VoiceEvent) => {
+    try {
+      host.track?.(event);
+    } catch {
+      /* counting must never get in the way */
+    }
+  };
+  const lastVoiceEdit = useRef(0);
+  const doUndo = () => {
+    if (lastVoiceEdit.current && Date.now() - lastVoiceEdit.current < 20_000) track({ type: "talk_undo_after" });
+    lastVoiceEdit.current = 0;
+    setHist((h) => undo(h));
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
@@ -301,7 +328,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
       const k = e.key.toLowerCase();
       if (k === "z" && !e.shiftKey) {
         e.preventDefault();
-        setHist((h) => undo(h));
+        doUndo();
       } else if ((k === "z" && e.shiftKey) || k === "y") {
         e.preventDefault();
         setHist((h) => redo(h));
@@ -387,13 +414,52 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     setSelected(to);
     return `Slide ${to + 1}.`;
   }
+  // Every spoken command that is not a request to the assistant: moving about, undo, redo, and delete (which asks for a yes first).
+  function runCommand(c: VoiceCommand): VoiceCommandResult {
+    track({ type: "talk_command", detail: c.to });
+    if (c.to === "undo") {
+      if (!canUndo(hist)) return { say: "There is nothing to undo." };
+      doUndo();
+      return { say: "Undone." };
+    }
+    if (c.to === "redo") {
+      if (!canRedo(hist)) return { say: "There is nothing to redo." };
+      setHist((h) => redo(h));
+      return { say: "Done again." };
+    }
+    if (c.to === "delete") {
+      if (typeof sel !== "number") return { say: "Pick a slide first." };
+      if (deck.slides.length <= 1) return { say: "A deck needs at least one slide, so I can't delete this one." };
+      return { say: `Delete slide ${sel + 1}? Say yes or no.`, confirm: true };
+    }
+    if (c.to === "confirm-delete") {
+      if (typeof sel !== "number" || deck.slides.length <= 1) return { say: "Nothing was deleted." };
+      const now = Math.max(0, sel - 1);
+      remove();
+      return { say: `Deleted. You are on slide ${now + 1}.` };
+    }
+    if (c.to === "cancel-delete") return { say: "Okay, I kept it." };
+    return { say: goBySpeech(c as NavCommand) }; // every other command was handled above
+  }
+  // The slide briefly shows a ring after a change, so a change made by voice (with nothing typed on screen) is easy to spot.
+  const [flash, setFlash] = useState(false);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function flashStage() {
+    setFlash(true);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlash(false), 1600);
+  }
   async function runAsk(prompt: string, opts?: { voice?: boolean }): Promise<string | null> {
     setAsking(true);
     setAskNote(null);
     spoken.current = undefined;
     const problem = await askSlide(prompt, opts);
     setAsking(false);
-    setAskNote(problem ? { kind: "error", text: problem } : { kind: "done", text: "Done. Not what you wanted? Press Undo." });
+    if (!problem) {
+      flashStage();
+      if (opts?.voice) lastVoiceEdit.current = Date.now();
+    }
+    setAskNote(problem ? { kind: "error", text: problem } : { kind: "done", text: `${spoken.current ?? "Done."} Not right? Press Undo.` });
     return problem;
   }
   // Turning a normal slide into a free-form one is done by the server from how the slide is drawn: instant, no model, no cost.
@@ -453,12 +519,17 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
         images: images.map((i) => ({ id: i.id, label: i.label, description: i.description, width: i.width, height: i.height })),
         ...(opts?.voice ? { fast: true } : {}),
       });
+      if (opts?.voice) {
+        track({ type: "talk_request", ok: !!data.slide });
+        if (data.limited) track({ type: "talk_limit" });
+      }
       if (!data.slide) return data.error ?? "Couldn't change the slide. Try again.";
       if (latestDeck.current.slides[index] !== original) return `The slide changed while ${assistantName} was working. Ask again.`;
       spoken.current = (converted ? "Free-form is on for this slide. " : "") + describeChange(base, data.slide);
       change(updateSlide(latestDeck.current, index, data.slide), `${index}.ask.${Date.now()}`);
       return null;
     } catch {
+      if (opts?.voice) track({ type: "talk_request", ok: false });
       return `Couldn't reach ${assistantName}. Check your connection and try again.`;
     }
   }
@@ -529,12 +600,12 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const shownSlide = recorded?.slides[(sel === "deck" ? 0 : sel + offset)];
 
   return (
-    <div className="min-h-screen lg:h-screen lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
+    <div className="min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
       <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shrink-0">
         {back}
         <h1 className="text-sm font-semibold truncate min-w-0 flex-1">{deck.title ?? "Untitled deck"}</h1>
         <span role="status" aria-live="polite" className={`hidden sm:inline text-xs ${saveError || conflict ? "text-red-500" : "text-[var(--ds-text-muted)]"}`}>{status === "Saved" && savedCount > 0 && <SuccessTick key={savedCount} size={13} className="mr-1 inline-block align-[-2px]" />}{status}</span>
-        <button type="button" onClick={() => setHist((h) => undo(h))} disabled={!canUndo(hist)} className={barButton} aria-label="Undo">Undo</button>
+        <button type="button" onClick={doUndo} disabled={!canUndo(hist)} className={barButton} aria-label="Undo">Undo</button>
         <button type="button" onClick={() => setHist((h) => redo(h))} disabled={!canRedo(hist)} className={barButton} aria-label="Redo">Redo</button>
         {host.versions && <button type="button" onClick={openVersions} className={`${barButton} hidden sm:inline-block`}>Versions</button>}
         {headerActions}
@@ -660,7 +731,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                     {/* Opens by growing, ease-out, 350 ms: fast first, then slow. */}
                     <div data-open={addAfter === i} inert={addAfter !== i} className="grid grid-rows-[0fr] data-[open=true]:grid-rows-[1fr] opacity-0 data-[open=true]:opacity-100 transition-[grid-template-rows,opacity] duration-[350ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none">
                       <div className="min-h-0 overflow-hidden">
-                        <div role="group" aria-label="Slide templates" className="mt-1.5 grid grid-cols-2 gap-1.5">
+                        <div ref={addAfter === i ? addAfterRef : undefined} role="group" aria-label="Slide templates" className="mt-1.5 grid grid-cols-2 gap-1.5">
                           {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
                             <button key={layout} type="button" onClick={() => add(layout)} className="text-left text-[11px] leading-tight px-2 py-2 rounded-md border border-[var(--ds-border-muted)] bg-[var(--ds-bg-primary)] hover:border-[var(--ds-accent)]">{t.label}</button>
                           ))}
@@ -677,7 +748,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 + Add slide
               </button>
               {addOpen && (
-                <div role="menu" className="absolute left-0 lg:left-0 bottom-full lg:bottom-auto lg:top-full mt-1 z-20 w-52 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
+                <div ref={addMenuRef} role="menu" className="absolute left-0 bottom-full lg:static lg:bottom-auto lg:w-full mt-1 z-20 w-52 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
                   {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
                     <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-2.5 py-1.5 rounded-md hover:bg-[var(--ds-bg-hover)]">{t.label}</button>
                   ))}
@@ -691,7 +762,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
         <section aria-label="Slide preview" className="min-w-0 min-h-0 flex flex-col" onPointerDown={() => setPickedBox(null)}>
           <div className="flex-1 min-h-0 p-3 sm:p-4 lg:[container-type:size] flex items-center justify-center">
             <div className="w-full lg:w-[min(100cqw,calc(100cqh*16/9))] max-w-[1100px]">
-              <div className="rounded-lg overflow-hidden border border-[var(--ds-border-muted)] shadow-sm bg-[var(--ds-bg-surface)]">
+              <div className={`rounded-lg overflow-hidden border border-[var(--ds-border-muted)] shadow-sm bg-[var(--ds-bg-surface)] ring-4 transition-shadow duration-700 motion-reduce:transition-none ${flash ? "ring-[var(--ds-accent)]" : "ring-transparent"}`}>
                 <div className="relative">
                   {shownSlide ? <SlideStage slide={shownSlide} assets={recorded!.assets} images={pixels} logoRound={logo.round} /> : <div className="aspect-video flex items-center justify-center text-xs text-[var(--ds-text-muted)]">Drawing your slide…</div>}
                   {fixedLayout && typeof sel === "number" && shownSlide && <LockedParts parts={lockedParts(shownSlide, movableBoxes(deck.slides[sel]).map((m) => m.box))} onTry={nudgeFreeForm} />}
@@ -729,7 +800,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
               />
-              <SlideAsk slideKey={sel} onNavigate={goBySpeech} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
+              <SlideAsk slideKey={sel} onCommand={runCommand} track={track} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
             </>
           )}
         </section>
@@ -783,7 +854,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                     <div key={i} className="flex gap-1.5">
                       <input aria-label={`Detail ${i + 1} label`} value={m.label} onChange={(e) => change(setAt(deck, ["meta", i, "label"], e.target.value), `deck.meta.${i}.label`)} className={inputClass} />
                       <input aria-label={`Detail ${i + 1} value`} value={m.value} onChange={(e) => change(setAt(deck, ["meta", i, "value"], e.target.value), `deck.meta.${i}.value`)} className={inputClass} />
-                      <button type="button" aria-label={`Remove detail ${i + 1}`} onClick={() => change(removeAt(deck, ["meta", i]))} className="shrink-0 w-7 h-8 text-xs text-[var(--ds-text-muted)] hover:text-[var(--ds-text-primary)]">×</button>
+                      <button type="button" aria-label={`Remove detail ${i + 1}`} onClick={() => change(removeAt(deck, ["meta", i]))} className="shrink-0 w-7 h-8 pointer-coarse:w-11 pointer-coarse:h-11 text-xs text-[var(--ds-text-muted)] hover:text-[var(--ds-text-primary)]">×</button>
                     </div>
                   ))}
                   {(deck.meta?.length ?? 0) < 4 && (
