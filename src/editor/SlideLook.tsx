@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { SlideContent, SlideDeck } from "../pptx/presentationBuilder.js";
 import type { Box } from "../edit/deckEdit.js";
 import type { PictureChoice } from "./SlideForm.js";
@@ -83,12 +84,17 @@ export default function SlideLook({
   const placed = placedPictures(slide);
   const setPlaced = (next: typeof placed, key: string) => onChange(setPlacedPictures(slide, next), key);
 
+  // On a short screen the panel starts folded, so the slide's fields above it get the room; one tap opens it.
+  const [open, setOpen] = useState(() => typeof window === "undefined" || window.innerHeight >= 800);
+
   return (
     <section aria-label="This slide's look" className="shrink-0 border-t border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] p-2.5 space-y-2 max-h-[55%] overflow-y-auto">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold text-[var(--ds-text-secondary)]">This slide&apos;s look</h3>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="w-full flex items-center justify-between gap-2 text-left pointer-coarse:py-1.5">
+        <h3 className="text-xs font-semibold text-[var(--ds-text-secondary)]">This slide&apos;s look <span aria-hidden="true" className="ml-1 text-[var(--ds-text-muted)]">{open ? "▾" : "▸"}</span></h3>
         <span className="text-[10px] text-[var(--ds-text-muted)]">{hasSlideOptions(slide) ? "Changed from the deck" : "Same as the deck"}</span>
-      </div>
+      </button>
+      {open && (
+      <>
       <div className="grid grid-cols-2 gap-2">
         <ColorField label="Slide background" value={typeof fields.background === "string" ? fields.background : undefined} fallback={deck.background ?? "FFFFFF"} onChange={(v) => onChange(setSlideOption(slide, "background", v), "opt.background")} />
         <ColorField label="Slide accent" value={typeof fields.accent === "string" ? fields.accent : undefined} fallback={deck.accent ?? "2563EB"} onChange={(v) => onChange(setSlideOption(slide, "accent", v), "opt.accent")} />
@@ -109,6 +115,8 @@ export default function SlideLook({
           ))}
           <p className="text-[11px] text-[var(--ds-text-muted)]">Drag on the slide to move; drag a corner to resize.</p>
         </fieldset>
+      )}
+      </>
       )}
     </section>
   );

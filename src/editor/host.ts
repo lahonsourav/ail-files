@@ -43,6 +43,15 @@ export interface AskArgs {
   fast?: boolean;
 }
 
+/** What talk mode reports, with no words from the person: only what happened. A host can count these to see whether talking works. */
+export interface VoiceEvent {
+  type: "talk_start" | "talk_request" | "talk_command" | "talk_blocked" | "talk_trouble" | "talk_undo_after" | "talk_limit";
+  /** For example the command ("next", "undo") or the kind of trouble ("silence"). */
+  detail?: string;
+  /** For a request: whether it changed the slide. */
+  ok?: boolean;
+}
+
 export interface FreeFormArgs {
   slide: SlideContent;
   deck: { background?: string; accent?: string; fontPair?: string };
@@ -67,7 +76,9 @@ export interface DeckEditorHost {
   /** Called after a newer deck arrives from `poll`, in case pictures came with it. */
   onRemoteChange?(): void;
   /** The model's new version of one slide ("Ask about this slide"), or an error to show. See `slideAskSystem` and `parseSlideReply` in ail-files/edit. */
-  ask(args: AskArgs): Promise<{ slide?: SlideContent; error?: string }>;
+  ask(args: AskArgs): Promise<{ slide?: SlideContent; error?: string; /** The person has used up their allowed changes for now (the editor counts it). */ limited?: boolean }>;
+  /** Optional. Told what happened in talk mode (never what was said), for example to count how it is used. */
+  track?(event: VoiceEvent): void;
   /** Optional. In talk mode, a quick one-line spoken acknowledgement of the request ("Sure, making the title bigger."), from a fast model, asked for at the same time as `ask`. Null (or slower than about a second) and a generic line is said instead. */
   acknowledge?(prompt: string): Promise<string | null>;
   /** A normal slide turned into a free-form one (see `slideToFreeForm` in ail-files/edit), or an error to show. */

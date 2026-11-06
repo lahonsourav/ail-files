@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VoiceSession, isStopCommand, narrateWhile, parseNavCommand, type RecognitionEventLike, type RecognitionLike, type VoiceState } from "../src/editor/voice.js";
+import { VoiceSession, isStopCommand, narrateWhile, parseActionCommand, parseAnswer, parseNavCommand, splitTrailingNav, type RecognitionEventLike, type RecognitionLike, type VoiceState } from "../src/editor/voice.js";
 
 class FakeRecognition implements RecognitionLike {
   continuous = false;
@@ -266,4 +266,64 @@ describe("moving between slides by voice", () => {
   ])("%s", (said, want) => expect(parseNavCommand(said)).toEqual(want));
 
   it.each(["next, make the title bigger", "make the next slide shorter", "go to slide zero", "the next big thing", "make the text bigger", "stop", ""])("is not a command: %s", (said) => expect(parseNavCommand(said)).toBeNull());
+});
+
+describe("more spoken commands", () => {
+  it.each([
+    ["undo", "undo"],
+    ["Undo that.", "undo"],
+    ["redo", "redo"],
+    ["do it again", "redo"],
+    ["delete this slide", "delete"],
+    ["Remove this slide please", "delete"],
+  ])("%s", (said, to) => expect(parseActionCommand(said)).toEqual({ to }));
+  it.each(["undo the title", "make the text bigger", "delete the second bullet", "remove the picture", ""])("is not an action: %s", (said) => expect(parseActionCommand(said)).toBeNull());
+
+  it.each([["yes", "yes"], ["Yeah.", "yes"], ["go ahead", "yes"], ["no", "no"], ["Cancel", "no"], ["never mind", "no"], ["haan", "yes"], ["nahi", "no"]])("answer: %s", (said, want) => expect(parseAnswer(said)).toBe(want));
+  it.each(["maybe", "yes make it bigger", ""])("is not an answer: %s", (said) => expect(parseAnswer(said)).toBeNull());
+
+  it("finds a slide move at the end of an edit", () => {
+    expect(splitTrailingNav("change the background to blue and change the list to a table, next slide")).toEqual({ request: "change the background to blue and change the list to a table", nav: { to: "next" } });
+    expect(splitTrailingNav("make the title shorter then next slide")).toEqual({ request: "make the title shorter", nav: { to: "next" } });
+    expect(splitTrailingNav("make the text bigger and then go to slide 3")).toEqual({ request: "make the text bigger", nav: { to: "number", n: 3 } });
+    expect(splitTrailingNav("make the title shorter next slide")).toEqual({ request: "make the title shorter", nav: { to: "next" } });
+  });
+  it.each(["next slide", "put a table in the next slide", "make the next slide shorter", "change the list to a table", "go to the first slide of the story"])("has no trailing move: %s", (said) => expect(splitTrailingNav(said)).toBeNull());
+
+  it.each([
+    ["agli slide", "next"],
+    ["pichli slide", "previous"],
+    ["pehli slide", "first"],
+    ["aakhri slide", "last"],
+    ["अगली स्लाइड", "next"],
+    ["पिछली स्लाइड", "previous"],
+  ])("Hindi navigation: %s", (said, to) => expect(parseNavCommand(said)).toEqual({ to }));
+  it.each(["ruko", "bas karo", "band karo", "रुको"])("Hindi stop: %s", (said) => expect(isStopCommand(said)).toBe(true));
+});
+
+describe("trouble listening", () => {
+  it("says so once after several silent runs in a row, and not after one that heard something", () => {
+    const recs: FakeRecognition[] = [];
+    const trouble: string[] = [];
+    const v = new VoiceSession({ create: () => (recs.push(new FakeRecognition()), recs[recs.length - 1]), lang: "en-IN", onHeard: () => {}, onSentence: () => {}, onState: () => {}, onTrouble: (k) => trouble.push(k) });
+    v.start();
+    for (let i = 0; i < 2; i++) { recs[i].onend?.(); vi.advanceTimersByTime(300); }
+    expect(trouble).toEqual([]);
+    recs[2].onend?.();
+    expect(trouble).toEqual(["silence"]);
+    vi.advanceTimersByTime(300);
+    recs[3].onend?.();
+    expect(trouble).toEqual(["silence"]); // only once
+    v.stop();
+  });
+
+  it("reports a missing microphone or a broken speech service", () => {
+    const recs: FakeRecognition[] = [];
+    const trouble: [string, string | undefined][] = [];
+    const v = new VoiceSession({ create: () => (recs.push(new FakeRecognition()), recs[recs.length - 1]), lang: "en-IN", onHeard: () => {}, onSentence: () => {}, onState: () => {}, onTrouble: (k, d) => trouble.push([k, d]) });
+    v.start();
+    recs[0].onerror?.({ error: "audio-capture" });
+    expect(trouble).toEqual([["error", "audio-capture"]]);
+    v.stop();
+  });
 });

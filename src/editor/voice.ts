@@ -41,6 +41,8 @@ export interface VoiceOptions {
   /** The sentence is finished (the person paused). The session is already paused: call resume() when the work is done. */
   onSentence: (text: string) => void;
   onState: (state: VoiceState) => void;
+  /** Said once when listening is not going well: nothing has been heard for several runs in a row ("silence"), or the microphone or speech service failed ("error"). */
+  onTrouble?: (kind: "silence" | "error", detail?: string) => void;
 }
 
 export class VoiceSession {
@@ -52,6 +54,8 @@ export class VoiceSession {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private restart: ReturnType<typeof setTimeout> | null = null;
   private state: VoiceState = "off";
+  private quietRuns = 0; // runs in a row that ended without a word
+  private troubled = false;
 
   constructor(private readonly o: VoiceOptions) {}
 
@@ -70,6 +74,8 @@ export class VoiceSession {
   start(): void {
     this.wanted = true;
     this.held = false;
+    this.quietRuns = 0;
+    this.troubled = false;
     this.begin();
   }
 
@@ -138,6 +144,8 @@ export class VoiceSession {
       let heard = "";
       for (let i = 0; i < event.results.length; i++) heard += `${event.results[i][0]?.transcript ?? ""} `;
       this.run = heard;
+      this.quietRuns = 0;
+      this.troubled = false;
       const text = this.text();
       if (text) this.o.onHeard(text);
       if (this.timer) clearTimeout(this.timer);
@@ -154,14 +162,20 @@ export class VoiceSession {
         this.end();
         this.set("blocked");
       }
-      // "no-speech", "aborted" and network blips just end the run: onend starts the next one.
+      else if (event.error === "audio-capture" || event.error === "network") this.o.onTrouble?.("error", event.error);
+      // "no-speech", "aborted" and short network blips just end the run: onend starts the next one.
     };
     rec.onend = () => {
       // The browser ends a run after a while or on silence. Carry what was heard and listen again.
       if (this.rec !== rec) return;
       this.rec = null;
+      const heardSomething = this.text() !== "";
       this.carry = this.text();
       this.run = "";
+      if (!heardSomething && ++this.quietRuns >= 3 && !this.troubled) {
+        this.troubled = true;
+        this.o.onTrouble?.("silence");
+      }
       if (this.wanted && !this.held) this.restart = setTimeout(() => this.begin(), 250);
     };
     this.rec = rec;
@@ -184,7 +198,12 @@ export class VoiceSession {
 
 /** Is this the person asking the voice to stop? ("stop", "stop listening", "stop voice", "turn off voice"...) */
 export function isStopCommand(text: string): boolean {
-  return /^(please )?(stop|turn off|end)( the)?( listening| voice| talking| mic| microphone)?[.!]?$/i.test(text.trim());
+  const t = text.trim();
+  return (
+    /^(please )?(stop|turn off|end)( the)?( listening| voice| talking| mic| microphone)?[.!]?$/i.test(t) ||
+    // Hindi and Hinglish: "ruko", "bas", "band karo", "bas karo".
+    /^(ruko|rukiye|bas|bas karo|band karo|band kijiye|बस|रुको|रुकिए|बंद करो)[.!।]?$/i.test(t)
+  );
 }
 
 /** Moving about the deck by voice: next, previous, first, last, or a slide number. */
@@ -208,6 +227,12 @@ export function parseNavCommand(text: string): NavCommand | null {
   const go = "(?:(?:go|move|jump|switch|turn|flip) (?:on )?(?:to |onto )?)?"; // "go to ", "move on to ", or nothing
   const slide = "(?: (?:slide|page))?";
   const the = "(?:the )?";
+  // Hindi and Hinglish ("agli slide", "pichli slide", "pehli slide", "aakhri slide", and the same in Devanagari). Whole sentence only, like the English ones.
+  const hiSlide = "(?: ?(?:slide|page|स्लाइड|पेज))?";
+  if (new RegExp(`^(?:agli|agla|अगली|अगला)${hiSlide}(?: (?:par|pe) jao| (?:par|pe) chalo| dikhao| karo|)$`).test(t) || /^(?:aage|आगे)(?: (?:badho|jao|चलो|बढ़ो))?$/.test(t)) return { to: "next" };
+  if (new RegExp(`^(?:pichli|pichhli|pichla|पिछली|पिछला)${hiSlide}(?: (?:par|pe) jao| (?:par|pe) chalo| dikhao| karo|)$`).test(t) || /^(?:peeche|piche|पीछे)(?: (?:jao|chalo|जाओ|चलो))?$/.test(t)) return { to: "previous" };
+  if (new RegExp(`^(?:pehli|pahli|पहली|पहला)${hiSlide}(?: (?:par|pe) jao| dikhao|)$`).test(t)) return { to: "first" };
+  if (new RegExp(`^(?:aakhri|akhri|आखिरी|अंतिम)${hiSlide}(?: (?:par|pe) jao| dikhao|)$`).test(t)) return { to: "last" };
   const word = (w: string) => new RegExp(`^${go}${the}(?:${w})${slide}$`).test(t);
   if (word("next") || /^(go |move )?(on|forward|ahead)$/.test(t)) return { to: "next" };
   if (word("previous|prev") || /^(go |move |turn |flip |jump )?(back|backward|backwards)( (one|a) (slide|page))?$/.test(t)) return { to: "previous" };
@@ -217,6 +242,57 @@ export function parseNavCommand(text: string): NavCommand | null {
   if (num) {
     const n = NUMBER_WORDS[num[1]] ?? Number(num[1]);
     if (n >= 1) return { to: "number", n };
+  }
+  return null;
+}
+
+/** Other whole-sentence commands: undo, redo and delete this slide (which is always confirmed first). */
+export type ActionCommand = { to: "undo" | "redo" | "delete" | "confirm-delete" | "cancel-delete" };
+
+function plain(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[.,!?।]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^((please|ok|okay|now) )+/, "")
+    .replace(/( (please|now))+$/, "");
+}
+
+/** "undo", "undo that", "redo", "delete this slide", "remove this slide". Whole sentence only. */
+export function parseActionCommand(text: string): ActionCommand | null {
+  const t = plain(text);
+  if (/^(undo|undo that|undo it|undo the last change|go back one step|step back|वापस करो|undo karo)$/.test(t)) return { to: "undo" };
+  if (/^(redo|redo that|redo it|do it again|redo karo)$/.test(t)) return { to: "redo" };
+  if (/^(delete|remove) (this|the current|current) (slide|page)$/.test(t) || /^(delete|remove) (slide|page)$/.test(t) || /^(is slide ko |slide )?(delete|hatao|hata do) ?(karo|do)?$/.test(t)) return { to: "delete" };
+  return null;
+}
+
+/** A yes or a no to a question the assistant just asked ("Delete slide 3? Say yes or no."). */
+export function parseAnswer(text: string): "yes" | "no" | null {
+  const t = plain(text);
+  if (/^(yes|yeah|yep|yup|sure|confirm|do it|delete it|go ahead|haan|ha|han|theek hai|हाँ|हां|ठीक है)$/.test(t)) return "yes";
+  if (/^(no|nope|nah|cancel|stop|do not|don t|never mind|nevermind|keep it|nahi|nahin|mat karo|नहीं|नही)$/.test(t)) return "no";
+  return null;
+}
+
+/**
+ * "…change the list to a table, next slide": an edit request with a slide move at the very end. Returns the request and the move, or null.
+ * The move must be set apart by a comma, "then" or "and then", or be the exact words "next slide" / "next page" after something that does
+ * not end in a preposition ("put a table in the next slide" is only an edit).
+ */
+export function splitTrailingNav(text: string): { request: string; nav: NavCommand } | null {
+  const raw = text.trim();
+  if (!raw || parseNavCommand(raw)) return null;
+  const separated = /^(.{4,}?)(?:\s*[,;]\s*|\s+and then\s+|\s+then\s+|\s+after that\s+)((?:go to |move to |jump to )?(?:the )?(?:next|previous|first|last)(?: slide| page)?|go back|(?:go to |jump to )?(?:slide|page) \w+)[.!?]?$/i.exec(raw);
+  if (separated) {
+    const nav = parseNavCommand(separated[2]);
+    if (nav) return { request: separated[1].trim(), nav };
+  }
+  const bare = /^(.{4,}?)\s+((?:go to )?(?:the )?next (?:slide|page))[.!?]?$/i.exec(raw);
+  if (bare && !/\b(in|on|to|of|for|at|from|after|before|and|with|into)$/i.test(bare[1].trim())) {
+    const nav = parseNavCommand(bare[2]);
+    if (nav) return { request: bare[1].trim(), nav };
   }
   return null;
 }

@@ -1,0 +1,30 @@
+name: Release
+
+# When a change to package.json lands on main with a version that has no release yet, make the tag and the GitHub release
+# (with generated notes). Nothing else to do by hand: bump "version" in package.json in the pull request, merge it, and the
+# release v<version> appears, which is what programs install (github:lahonsourav/ail-files#v<version>).
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create the tag and release for this version, if it has none
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "${tag} already exists: nothing to do."
+            exit 0
+          fi
+          gh release create "${tag}" --target "${GITHUB_SHA}" --title "${tag}" --generate-notes

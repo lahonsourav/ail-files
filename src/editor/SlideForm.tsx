@@ -23,7 +23,7 @@ export interface PictureChoice {
 const inputClass =
   "w-full text-sm px-2.5 py-1.5 rounded-md bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] focus:border-[var(--ds-accent)] outline-none";
 const smallButton =
-  "shrink-0 w-7 h-7 flex items-center justify-center rounded-md text-xs text-[var(--ds-text-muted)] hover:text-[var(--ds-text-primary)] hover:bg-[var(--ds-bg-hover)] disabled:opacity-30 disabled:hover:bg-transparent transition-colors";
+  "shrink-0 w-7 h-7 pointer-coarse:w-11 pointer-coarse:h-11 flex items-center justify-center rounded-md text-xs text-[var(--ds-text-muted)] hover:text-[var(--ds-text-primary)] hover:bg-[var(--ds-bg-hover)] disabled:opacity-30 disabled:hover:bg-transparent transition-colors";
 
 interface Ctx {
   slide: unknown;
