@@ -54,10 +54,10 @@
     "editor": "vite --config playground/vite.config.ts"
   },
   "dependencies": {
-    "docx": "^9.7.1",
+    "docx": "^9.15.2",
     "exceljs": "^4.4.0",
     "jszip": "^3.10.1",
-    "katex": "^0.19.0",
+    "katex": "^0.19.1",
     "playwright-core": "^1.62.1",
     "pptxgenjs": "^4.0.1",
     "react": "^19.2.0",
@@ -74,7 +74,7 @@
     "tsx": "^4.23.12",
     "typescript": "^7",
     "vite": "^8.3.5",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "keywords": [
     "pptx",
