@@ -892,7 +892,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
           )}
           {/* The chat box and Talk: on every slide, and on the cover when the host can change a cover. */}
           {(typeof sel === "number" || (sel === "deck" && !!host.askCover)) && (
-            <SlideAsk slideKey={sel} onCommand={runCommand} track={track} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
+            <SlideAsk subject={sel === "deck" ? "cover" : "slide"} slideKey={sel} onCommand={runCommand} track={track} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
           )}
         </section>
 

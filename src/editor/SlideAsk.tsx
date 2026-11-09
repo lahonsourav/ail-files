@@ -73,7 +73,7 @@ export interface VoiceCommandResult {
 }
 const noSubscribe = () => () => {};
 
-export default function SlideAsk({ onSend, busy, note, assistantName = "the assistant", slideKey, onVoicePhase, spokenReply, acknowledge, onCommand, track }: { onSend: (prompt: string, opts?: { voice?: boolean }) => Promise<string | null>; busy: boolean; note: { kind: "done" | "error"; text: string } | null; /** What the person is asking: "Ail", "the assistant". */ assistantName?: string; /** The slide being asked about: the typed text starts afresh when it changes, while talk mode carries on. */ slideKey?: unknown; /** Told whenever talk mode moves between its phases, so the editor can show the mark over the slide. */ onVoicePhase?: (phase: VoicePhase) => void; /** What to say aloud after a spoken request that worked ("Done. I changed the title."). Falls back to "Done." */ spokenReply?: () => string | undefined; /** A quick one-line spoken acknowledgement of the request ("Sure, making the title bigger."), asked for in parallel with the real work so the assistant can answer at once. Null or slow: a generic line is said instead. */ acknowledge?: (prompt: string) => Promise<string | null>; /** Carries out a spoken command that is not a request to the assistant ("next slide", "go back", "slide 3", "undo", "redo", "delete this slide") and says what to speak back. */ onCommand?: (command: VoiceCommand) => VoiceCommandResult; /** Told about talk mode events (started, blocked, in trouble), with no words from the person. */ track?: (event: VoiceEvent) => void }) {
+export default function SlideAsk({ subject = "slide", onSend, busy, note, assistantName = "the assistant", slideKey, onVoicePhase, spokenReply, acknowledge, onCommand, track }: { /** What is being changed, in the box's wording: "slide" (the default) or "cover". */ subject?: "slide" | "cover"; onSend: (prompt: string, opts?: { voice?: boolean }) => Promise<string | null>; busy: boolean; note: { kind: "done" | "error"; text: string } | null; /** What the person is asking: "Ail", "the assistant". */ assistantName?: string; /** The slide being asked about: the typed text starts afresh when it changes, while talk mode carries on. */ slideKey?: unknown; /** Told whenever talk mode moves between its phases, so the editor can show the mark over the slide. */ onVoicePhase?: (phase: VoicePhase) => void; /** What to say aloud after a spoken request that worked ("Done. I changed the title."). Falls back to "Done." */ spokenReply?: () => string | undefined; /** A quick one-line spoken acknowledgement of the request ("Sure, making the title bigger."), asked for in parallel with the real work so the assistant can answer at once. Null or slow: a generic line is said instead. */ acknowledge?: (prompt: string) => Promise<string | null>; /** Carries out a spoken command that is not a request to the assistant ("next slide", "go back", "slide 3", "undo", "redo", "delete this slide") and says what to speak back. */ onCommand?: (command: VoiceCommand) => VoiceCommandResult; /** Told about talk mode events (started, blocked, in trouble), with no words from the person. */ track?: (event: VoiceEvent) => void }) {
   const name = assistantName;
   const capitalName = name.charAt(0).toUpperCase() + name.slice(1);
   const [text, setText] = useState("");
@@ -270,7 +270,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
   );
 
   return (
-    <section aria-label={`Ask ${name} about this slide`} className="shrink-0 border-t border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] px-3 sm:px-4 pt-2.5 pb-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:z-30 max-sm:pt-2 max-sm:pb-[max(0.5rem,env(safe-area-inset-bottom))] max-sm:shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+    <section aria-label={`Ask ${name} about this ${subject}`} className="shrink-0 border-t border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] px-3 sm:px-4 pt-2.5 pb-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:z-30 max-sm:pt-2 max-sm:pb-[max(0.5rem,env(safe-area-inset-bottom))] max-sm:shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
       <div className="mx-auto w-full max-w-3xl space-y-1.5">
         {talking ? (
           // Talk mode: no typed text. The mark animates over the slide while it listens and works; this bar only says what is happening.
@@ -306,7 +306,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
         ) : (
           <div className="flex items-end max-sm:items-center gap-2">
             <textarea
-              aria-label={`Ask ${name} to change this slide`}
+              aria-label={`Ask ${name} to change this ${subject}`}
               rows={2}
               title='For example: "Make it shorter", "Put my poster on the right", "Make the background dark blue"'
               value={text}
@@ -319,7 +319,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
                   void send(text, true);
                 }
               }}
-              placeholder={phone ? "Change this slide…" : `Ask ${name} to change this slide`}
+              placeholder={phone ? `Change this ${subject}…` : `Ask ${name} to change this ${subject}`}
               className="flex-1 min-w-0 text-sm max-sm:text-base max-sm:h-10 max-sm:py-[7px] max-sm:leading-6 max-sm:overflow-hidden px-3 py-2 rounded-xl bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] focus:border-[var(--ds-accent)] outline-none resize-none disabled:opacity-60"
             />
             {micButton}
