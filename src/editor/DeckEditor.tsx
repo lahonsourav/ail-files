@@ -403,6 +403,10 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const [asking, setAsking] = useState(false);
   // Talk mode (see SlideAsk): while it hears the person, or speaks back, the animated mark shows over the slide, as it does while the slide changes.
   const [voicePhase, setVoicePhase] = useState<VoicePhase>("off");
+  // While talk mode is on everything but the slide and the talk bar is faded, so it is plain that the editor is listening and the slide is
+  // what is being worked on. Still there and still usable, just quieter.
+  const talkOn = voicePhase !== "off";
+  const dim = `transition-opacity duration-300 motion-reduce:transition-none ${talkOn ? "opacity-35" : ""}`;
   const spoken = useRef<string | undefined>(undefined); // what talk mode says after the last request
   const [nudgeNote, setNudgeNote] = useState(false);
   const [askNote, setAskNote] = useState<{ kind: "done" | "error"; text: string } | null>(null);
@@ -632,7 +636,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
 
   return (
     <div className="min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
-      <header className="flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shrink-0">
+      <header className={`${dim} flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shrink-0`}>
         {back}
         <h1 className="text-sm font-semibold truncate min-w-0 flex-1">{deck.title ?? "Untitled deck"}</h1>
         <span role="status" aria-live="polite" className={`hidden sm:inline text-xs ${saveError || conflict ? "text-red-500" : "text-[var(--ds-text-muted)]"}`}>{status === "Saved" && savedCount > 0 && <SuccessTick key={savedCount} size={13} className="mr-1 inline-block align-[-2px]" />}{status}</span>
@@ -646,7 +650,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
       </header>
 
       {updatedNote && !conflict && (
-        <div role="status" className="px-4 py-1.5 text-xs border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-elevated)] text-[var(--ds-text-secondary)]">{updatedNote}</div>
+        <div role="status" className={`${dim} px-4 py-1.5 text-xs border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-elevated)] text-[var(--ds-text-secondary)]`}>{updatedNote}</div>
       )}
       {headerNotice}
 
@@ -669,11 +673,12 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
         </div>
       )}
 
-      <p className="lg:hidden px-4 py-2 text-[11px] text-[var(--ds-text-muted)] border-b border-[var(--ds-border-muted)]">
+      <p className={`${dim} lg:hidden px-4 py-2 text-[11px] text-[var(--ds-text-muted)] border-b border-[var(--ds-border-muted)]`}>
         Basic editing on a phone: change text, add, move or remove slides. For pictures, charts and more room, open this page on a larger screen.
       </p>
 
       {typeof sel === "number" && (
+        <div className={`${dim} shrink-0`}>
         <SlideToolbar
           key={`bar${sel}`}
           slide={deck.slides[sel]}
@@ -691,11 +696,12 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
           assistantName={assistantName}
           onLayout={(layoutKey) => void (layoutKey === "canvas" ? turnOnFreeForm() : runAsk(`Change this slide to the "${layoutKey}" layout, carrying the content over and keeping what it says.`))}
         />
+        </div>
       )}
 
       <main className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-[200px_minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)]">
         {/* Slides */}
-        <aside aria-label="Slides" className="lg:border-r border-[var(--ds-border-muted)] lg:overflow-y-auto bg-[var(--ds-bg-surface)]">
+        <aside aria-label="Slides" className={`${dim} lg:border-r border-[var(--ds-border-muted)] lg:overflow-y-auto bg-[var(--ds-bg-surface)]`}>
           <div
             ref={strip}
             // The whole strip takes the drop (not only a slide), so letting go in a gap between two slides still counts.
@@ -793,7 +799,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
         {/* The slide */}
         <section aria-label="Slide preview" className="min-w-0 min-h-0 flex flex-col" onPointerDown={() => setPickedBox(null)}>
           {phone && pickedPanel && (
-            <div ref={pickedPanelRef} onPointerDown={(e) => e.stopPropagation()} className="mx-3 mt-3 max-h-[40dvh] overflow-y-auto rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] p-3 shadow-sm">
+            <div ref={pickedPanelRef} onPointerDown={(e) => e.stopPropagation()} className={`${dim} mx-3 mt-3 max-h-[40dvh] overflow-y-auto rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] p-3 shadow-sm`}>
               {pickedPanel}
             </div>
           )}
@@ -821,7 +827,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
             </div>
           </div>
           {fixedLayout && shownSlide && (
-            <div className="px-3 sm:px-4 pb-2 shrink-0">
+            <div className={`${dim} px-3 sm:px-4 pb-2 shrink-0`}>
               <div className="mx-auto w-full max-w-[1100px]">
                 <FreeFormNote busy={asking} highlight={nudgeNote} onTurnOn={() => void turnOnFreeForm()} />
               </div>
@@ -829,6 +835,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
           )}
           {typeof sel === "number" && (
             <>
+              <div className={dim}>
               <SlideInsert
                 key={`ins${sel}`}
                 slide={deck.slides[sel]}
@@ -837,13 +844,14 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
               />
+              </div>
               <SlideAsk slideKey={sel} onCommand={runCommand} track={track} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
             </>
           )}
         </section>
 
         {/* The fields */}
-        <aside aria-label="Slide fields" className="lg:border-l border-[var(--ds-border-muted)] min-h-0 flex flex-col bg-[var(--ds-bg-surface)]">
+        <aside aria-label="Slide fields" className={`${dim} lg:border-l border-[var(--ds-border-muted)] min-h-0 flex flex-col bg-[var(--ds-bg-surface)]`}>
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {sel === "deck" ? (
             <div className="space-y-3">
