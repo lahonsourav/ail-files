@@ -478,7 +478,9 @@ function normalizeAdvancedTableRow(raw: unknown): AdvancedTableCell[] {
 // pptxgenjs-free. A second, tighter clamp into the chrome-safe area happens
 // separately at render time in presentationBuilder.ts, where those
 // constants already live.
-const CANVAS_ELEMENT_CAP = 16;
+// The most a free-form slide holds. The model is asked to keep to 16 (src/prompts), but a layout turned into free-form can need more:
+// a five-step process is about 35 parts. 60 is what the converter (edit/slideToFreeForm.ts) writes at most.
+const CANVAS_ELEMENT_CAP = 60;
 const MIN_ELEMENT_SIZE = 0.1;
 const CANVAS_W = 10;
 const CANVAS_H = 5.625;
@@ -533,7 +535,7 @@ function normalizeCanvasElement(raw: unknown): CanvasElement | null {
   if (c.type === "shape") {
     const shape = enumOr(c.shape, SHAPE_KINDS);
     if (!shape) return null;
-    return { type: "shape", ...box, shape, fillRole: enumOr<FillRole>(c.fillRole, FILL_ROLES), borderRole: enumOr(c.borderRole, BORDER_ROLES) };
+    return { type: "shape", ...box, shape, fillRole: enumOr<FillRole>(c.fillRole, FILL_ROLES), fill: normalizeHexField(c.fill), borderRole: enumOr(c.borderRole, BORDER_ROLES) };
   }
   if (c.type === "icon") {
     const icon = normalizeIcon(c.icon);

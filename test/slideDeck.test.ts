@@ -73,12 +73,12 @@ describe("normalizeDeck — canvas layout", () => {
     expect(slide.layout).toBe("bullets");
   });
 
-  it("truncates more than 16 elements to the cap", () => {
-    const elements = Array.from({ length: 20 }, () => ({ type: "icon", x: 0, y: 0, w: 0.5, h: 0.5, icon: "idea" }));
+  it("truncates more than 60 elements to the cap (a layout turned into free-form can need that many; the model is asked to stay within 16)", () => {
+    const elements = Array.from({ length: 70 }, () => ({ type: "icon", x: 0, y: 0, w: 0.5, h: 0.5, icon: "idea" }));
     const deck = normalizeDeck(deckWithSlide({ layout: "canvas", title: "Many", elements }));
     const slide = deck!.slides[0];
     if (slide.layout !== "canvas") throw new Error("expected canvas");
-    expect(slide.elements).toHaveLength(16);
+    expect(slide.elements).toHaveLength(60);
   });
 
   it("drops an element with an unknown type", () => {

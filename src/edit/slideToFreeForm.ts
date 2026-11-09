@@ -52,16 +52,31 @@ const contains = (outer: Box, inner: Box) => inner.x >= outer.x - 0.03 && inner.
 
 // ── Roles ─────────────────────────────────────────────────────────────────────────
 
-function textRoleOf(color: string | null, c: ThemeColors): TextRole {
-  if (!color) return "body";
+/** A colour no role matches closely enough is kept exactly (the element's own colour), so a layout's coloured parts do not all turn into the accent. */
+const NEAR_ROLE = 40; // distance in RGB (0 to 441): about "the same colour to the eye"
+
+function textRoleOf(color: string | null, c: ThemeColors): { role: TextRole; exact: boolean } {
+  if (!color) return { role: "body", exact: false };
   const candidates: [TextRole, string][] = [["title", c.titleColor], ["body", c.bodyColor], ["accent", c.accent], ["onAccent", contrastingTextColor(c.accent)]];
-  return candidates.reduce((best, cur) => (distance(color, cur[1]) < distance(color, best[1]) ? cur : best))[0];
+  const best = candidates.reduce((b, cur) => (distance(color, cur[1]) < distance(color, b[1]) ? cur : b));
+  return { role: best[0], exact: distance(color, best[1]) > NEAR_ROLE };
 }
 
 function sizeOf(pt: number | null): CanvasTextSize {
   if (!pt) return "md";
   const tokens = Object.entries(CANVAS_TEXT_SIZE_PT) as [CanvasTextSize, number][];
   return tokens.reduce((best, cur) => (Math.abs(Math.log(cur[1] / pt)) < Math.abs(Math.log(best[1] / pt)) ? cur : best))[0];
+}
+
+function fillOf(fill: unknown, c: ThemeColors): { fillRole: FillRole; fill?: string } {
+  const role = fillRoleOf(fill, c);
+  if (!fill || typeof fill !== "object") return { fillRole: role };
+  const f = fill as { color?: unknown; transparency?: unknown };
+  const color = hex(f.color);
+  const transparency = num(f.transparency) ?? 0;
+  if (!color || transparency >= 97 || transparency > 0) return { fillRole: role }; // see-through fills stay as the nearest role
+  const roleColor = role === "accent" ? c.accent : role === "accentSoft" ? composite(c.accent, 85, c.background) : role === "card" ? blendHex(c.background, c.bodyColor, 0.06) : c.background;
+  return role !== "none" && distance(color, roleColor) > NEAR_ROLE ? { fillRole: role, fill: color } : { fillRole: role };
 }
 
 function fillRoleOf(fill: unknown, c: ThemeColors): FillRole {
@@ -243,13 +258,24 @@ export function slideToFreeForm({ slide, drawn, icons, iconColors, palette, logo
       elements.push({
         type: "text", ...inner, text,
         fontRole: face && face === palette.headingFont && palette.headingFont !== palette.bodyFont ? "heading" : "body",
-        textRole: textRoleOf(hex(o.color), palette),
+        ...(() => {
+          const r = textRoleOf(hex(o.color), palette);
+          return r.exact ? { textRole: r.role, color: hex(o.color)! } : { textRole: r.role };
+        })(),
         size: sizeOf(num(o.fontSize)),
         bold: o.bold === true, italic: o.italic === true,
         align: o.align === "center" || o.align === "right" ? o.align : "left",
         valign: valignOf(o.valign),
       });
     } else if (item.kind === "shape") {
+      // An arrow between steps becomes an arrow character in a small text box (free-form has no arrow shape), so it still points the way.
+      const arrow = typeof item.shape === "string" ? /^(right|left|up|down)Arrow$/.exec(item.shape) : null;
+      if (arrow) {
+        const [cx, cy] = [box.x + box.w / 2, box.y + box.h / 2];
+        const side = Math.max(0.3, Math.min(0.5, Math.max(box.w, box.h) * 1.4));
+        elements.push({ type: "text", x: cx - side / 2, y: cy - side / 2, w: side, h: side, text: { right: "→", left: "←", up: "↑", down: "↓" }[arrow[1] as "right"], textRole: "body", size: "sm", align: "center", valign: "middle" });
+        continue;
+      }
       const shape = item.shape === "line" ? "line" : item.shape === "ellipse" ? "ellipse" : item.shape === "roundRect" ? "roundRect" : "rect";
       // A badge circle followed by its glyph becomes one icon element.
       const next = items[i + 1];
@@ -264,7 +290,7 @@ export function slideToFreeForm({ slide, drawn, icons, iconColors, palette, logo
       const isLine = shape === "line" || box.w < 0.03 || box.h < 0.03;
       elements.push({
         type: "shape", ...box, shape: isLine ? "line" : shape,
-        ...(isLine ? {} : { fillRole: fillRoleOf(item.opts.fill, palette) }),
+        ...(isLine ? {} : fillOf(item.opts.fill, palette)),
         borderRole: borderRoleOf(item.opts.line, palette),
       });
     } else if (item.kind === "image") {
