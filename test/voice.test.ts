@@ -288,6 +288,22 @@ describe("more spoken commands", () => {
     expect(splitTrailingNav("make the text bigger and then go to slide 3")).toEqual({ request: "make the text bigger", nav: { to: "number", n: 3 } });
     expect(splitTrailingNav("make the title shorter next slide")).toEqual({ request: "make the title shorter", nav: { to: "next" } });
   });
+  it.each([
+    ["change the list to a table and next slide", "change the list to a table", { to: "next" }],
+    ["change the list to a table and go to the next slide", "change the list to a table", { to: "next" }],
+    ["change the list to a table, and then move to the next slide", "change the list to a table", { to: "next" }],
+    ["change the list to a table. Next slide.", "change the list to a table", { to: "next" }],
+    ["change the list to a table then go to slide 4", "change the list to a table", { to: "number", n: 4 }],
+    ["make the title shorter, then next one", "make the title shorter", { to: "next" }],
+    ["make the title shorter and go to the next page please", "make the title shorter", { to: "next" }],
+    ["make the title shorter and then go back", "make the title shorter", { to: "previous" }],
+    ["make the title shorter and go back", "make the title shorter", { to: "previous" }],
+    ["make the title bigger, move on", "make the title bigger", { to: "next" }],
+    ["make the title shorter, agli slide", "make the title shorter", { to: "next" }],
+    ["change the background to blue and the text colour to white and change the list to a table next slide", "change the background to blue and the text colour to white and change the list to a table", { to: "next" }],
+  ])("finds the move: %s", (said, request, nav) => expect(splitTrailingNav(said)).toEqual({ request, nav }));
+  it.each(["make the logo bigger and back", "make the logo bigger and move on", "make the title shorter and forward", "change the list to a table and the next slide too"])("keeps this as one edit: %s", (said) => expect(splitTrailingNav(said)).toBeNull());
+
   it.each(["next slide", "put a table in the next slide", "make the next slide shorter", "change the list to a table", "go to the first slide of the story"])("has no trailing move: %s", (said) => expect(splitTrailingNav(said)).toBeNull());
 
   it.each([
@@ -325,5 +341,30 @@ describe("trouble listening", () => {
     recs[0].onerror?.({ error: "audio-capture" });
     expect(trouble).toEqual([["error", "audio-capture"]]);
     v.stop();
+  });
+});
+
+import { bestVoice, voiceScore } from "../src/editor/voice";
+
+describe("choosing the most natural voice", () => {
+  const v = (name: string, lang: string, localService = true) => ({ name, lang, localService });
+  it("prefers a neural or network voice over the plain on-device one", () => {
+    const voices = [v("Microsoft David - English (United States)", "en-US"), v("Microsoft Aria Online (Natural) - English (United States)", "en-US", false), v("Google US English", "en-US", false)];
+    expect(bestVoice(voices, "en-US")?.name).toContain("Natural");
+    expect(bestVoice(voices.slice(0, 1).concat(voices.slice(2)), "en-US")?.name).toBe("Google US English");
+  });
+  it("prefers a premium or enhanced Apple voice, and never a novelty one", () => {
+    const voices = [v("Fred", "en-US"), v("Samantha", "en-US"), v("Ava (Premium)", "en-US"), v("Zarvox", "en-US")];
+    expect(bestVoice(voices, "en-US")?.name).toBe("Ava (Premium)");
+    expect(voiceScore(v("Zarvox", "en-US"), "en-US")!).toBeLessThan(0);
+  });
+  it("keeps to the language, and takes the exact region first", () => {
+    const voices = [v("Google हिन्दी", "hi-IN", false), v("Google UK English Female", "en-GB", false), v("Google US English", "en-US", false)];
+    expect(bestVoice(voices, "hi-IN")?.lang).toBe("hi-IN");
+    expect(bestVoice(voices, "en-GB")?.name).toBe("Google UK English Female");
+    expect(bestVoice(voices, "fr-FR")).toBeUndefined();
+  });
+  it("still finds a voice when only another region of the language is there", () => {
+    expect(bestVoice([v("Microsoft Neerja Online (Natural) - English (India)", "en-IN", false)], "en-US")?.lang).toBe("en-IN");
   });
 });

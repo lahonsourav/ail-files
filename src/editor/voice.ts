@@ -225,7 +225,7 @@ export function parseNavCommand(text: string): NavCommand | null {
     .replace(/^((please|ok|okay|now) )+/, "")
     .replace(/( (please|now))+$/, "");
   const go = "(?:(?:go|move|jump|switch|turn|flip) (?:on )?(?:to |onto )?)?"; // "go to ", "move on to ", or nothing
-  const slide = "(?: (?:slide|page))?";
+  const slide = "(?: (?:slide|page|one))?";
   const the = "(?:the )?";
   // Hindi and Hinglish ("agli slide", "pichli slide", "pehli slide", "aakhri slide", and the same in Devanagari). Whole sentence only, like the English ones.
   const hiSlide = "(?: ?(?:slide|page|स्लाइड|पेज))?";
@@ -278,19 +278,31 @@ export function parseAnswer(text: string): "yes" | "no" | null {
 
 /**
  * "…change the list to a table, next slide": an edit request with a slide move at the very end. Returns the request and the move, or null.
- * The move must be set apart by a comma, "then" or "and then", or be the exact words "next slide" / "next page" after something that does
- * not end in a preposition ("put a table in the next slide" is only an edit).
+ * The move can be set apart by a comma, a full stop, "and", "and then", "then" or "after that" ("…to a table and go to the next slide",
+ * "…then slide 4", "…, agli slide"), or be the exact words "next slide" / "next page" right after the request when that does not end in a
+ * preposition ("put a table in the next slide" is only an edit). A bare "back", "forward" or "move on" (without "go to", "go back") only counts after a comma, a full
+ * stop or "then", since "…and back" could be part of an edit.
  */
 export function splitTrailingNav(text: string): { request: string; nav: NavCommand } | null {
-  const raw = text.trim();
+  const raw = text.trim().replace(/[.!?]+$/, "").trim();
   if (!raw || parseNavCommand(raw)) return null;
-  const separated = /^(.{4,}?)(?:\s*[,;]\s*|\s+and then\s+|\s+then\s+|\s+after that\s+)((?:go to |move to |jump to )?(?:the )?(?:next|previous|first|last)(?: slide| page)?|go back|(?:go to |jump to )?(?:slide|page) \w+)[.!?]?$/i.exec(raw);
-  if (separated) {
-    const nav = parseNavCommand(separated[2]);
-    if (nav) return { request: separated[1].trim(), nav };
+  const SEPARATOR = /\s*[,;.]\s*|\s+(?:and then|and also|and after that|and|then|after that)\s+/gi;
+  const cuts = [...raw.matchAll(SEPARATOR)];
+  for (let i = cuts.length - 1; i >= 0; i--) {
+    const cut = cuts[i];
+    // The request can end on a connecting word of its own ("…to a table, and then …": the cut found "then", the "and" belongs to the move).
+    const head = raw.slice(0, cut.index).trim().replace(/[\s,;]+(?:and also|also|and)$/i, "").replace(/[\s,;]+$/, "");
+    // After a comma the move can still start with a connecting word ("…, and then move to the next slide").
+    const tail = raw.slice(cut.index + cut[0].length).trim().replace(/^(?:and then|and also|and after that|and|then|after that)\s+/i, "");
+    if (head.length < 4 || !tail) continue;
+    const nav = parseNavCommand(tail);
+    if (!nav) continue;
+    const firm = /[,;.]/.test(cut[0]) || /then|after that/i.test(cut[0]);
+    if (!firm && /^(?:back|backward|backwards|forward|ahead|on|move on|go on|move forward)$/i.test(tail.replace(/\s+(?:please|now)$/i, ""))) continue;
+    return { request: head, nav };
   }
-  const bare = /^(.{4,}?)\s+((?:go to )?(?:the )?next (?:slide|page))[.!?]?$/i.exec(raw);
-  if (bare && !/\b(in|on|to|of|for|at|from|after|before|and|with|into)$/i.test(bare[1].trim())) {
+  const bare = /^(.{4,}?)\s+((?:(?:go|move|jump) to )?(?:the )?next (?:slide|page)(?: please)?)$/i.exec(raw);
+  if (bare && !/\b(in|on|to|of|for|at|from|after|before|and|with|into|by)$/i.test(bare[1].trim())) {
     const nav = parseNavCommand(bare[2]);
     if (nav) return { request: bare[1].trim(), nav };
   }
@@ -313,15 +325,52 @@ export function primeSpeech(): void {
     const u = new SpeechSynthesisUtterance(" ");
     u.volume = 0;
     window.speechSynthesis.speak(u);
+    window.speechSynthesis.getVoices(); // starts loading the voice list, which Chrome fills in late
   } catch {
     /* not available: replies just stay silent */
   }
 }
 
+/** How good a voice is likely to sound for this language, or null if it cannot speak it. Network and "natural" voices sound far more human than the plain on-device ones. */
+export function voiceScore(v: { name: string; lang: string; localService?: boolean; default?: boolean }, lang: string): number | null {
+  const want = lang.toLowerCase();
+  const base = want.slice(0, 2);
+  const has = v.lang.toLowerCase().replace("_", "-");
+  if (!has.startsWith(base)) return null;
+  const n = v.name;
+  let score = 0;
+  if (has === want) score += 12;
+  else if (has.slice(0, 2) === base && want.includes("-") && has.includes("-")) score += 2; // another region of the same language
+  // The neural voices: Microsoft "Natural" and "Online", Apple "Premium", "Enhanced" and Siri, Google's network voices.
+  if (/natural|neural/i.test(n)) score += 60;
+  if (/\bonline\b/i.test(n)) score += 20;
+  if (/premium|enhanced|siri/i.test(n)) score += 45;
+  if (/google/i.test(n)) score += 35;
+  // Good on-device voices.
+  if (/\b(samantha|ava|allison|serena|karen|moira|tessa|daniel|lekha|rishi|veena|swara|neerja|prabhat|madhur)\b/i.test(n)) score += 15;
+  // The robotic and novelty ones.
+  if (/espeak|compact|novelty|\b(fred|albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox)\b/i.test(n)) score -= 100;
+  if (v.localService && !/natural|neural|premium|enhanced|siri/i.test(n)) score -= 5; // a plain on-device voice is the robotic one
+  if (v.default) score += 1;
+  return score;
+}
+
+/** The most natural voice the browser has for the language. */
+export function bestVoice<T extends { name: string; lang: string; localService?: boolean; default?: boolean }>(voices: T[], lang: string): T | undefined {
+  let best: T | undefined;
+  let bestScore = -Infinity;
+  for (const v of voices) {
+    const sc = voiceScore(v, lang);
+    if (sc !== null && sc > bestScore) {
+      best = v;
+      bestScore = sc;
+    }
+  }
+  return best;
+}
+
 function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
-  const voices = window.speechSynthesis.getVoices();
-  const base = lang.slice(0, 2).toLowerCase();
-  return voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase()) ?? voices.find((v) => v.lang.toLowerCase().startsWith(base) && v.localService) ?? voices.find((v) => v.lang.toLowerCase().startsWith(base));
+  return bestVoice(window.speechSynthesis.getVoices(), lang);
 }
 
 /** Says a short line aloud and resolves when it has been said (or after a safety timeout, or at once if the browser cannot speak). */
@@ -341,6 +390,7 @@ export function speak(text: string, lang: string): Promise<void> {
     u.lang = lang;
     const voice = pickVoice(lang);
     if (voice) u.voice = voice;
+    u.rate = 0.96; // a touch slower than the default sounds less hurried
     u.onend = finish;
     u.onerror = finish;
     window.speechSynthesis.cancel();
