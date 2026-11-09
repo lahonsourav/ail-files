@@ -3,7 +3,7 @@
 import { SLIDE_HEIGHT, SLIDE_WIDTH, type LockedPart } from "../edit/deckEdit.js";
 
 // Greyed frames over the parts a normal layout places itself. They cannot be moved; pointing at one says why, and pressing one
-// draws attention to the "Turn on free-form" note under the slide.
+// draws attention to the "Turn on editing" note under the slide.
 
 export default function LockedParts({ parts, onTry }: { parts: LockedPart[]; onTry: () => void }) {
   return (
@@ -12,7 +12,7 @@ export default function LockedParts({ parts, onTry }: { parts: LockedPart[]; onT
         <div
           key={i}
           onClick={onTry}
-          title="Placed by this slide's layout. Turn on free-form to move or resize it."
+          title="Placed by this slide's layout. Turn on editing to move or resize it."
           className="group absolute pointer-events-auto cursor-not-allowed"
           style={{ left: `${(p.x / SLIDE_WIDTH) * 100}%`, top: `${(p.y / SLIDE_HEIGHT) * 100}%`, width: `${(p.w / SLIDE_WIDTH) * 100}%`, height: `${(p.h / SLIDE_HEIGHT) * 100}%` }}
         >
