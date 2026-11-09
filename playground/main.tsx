@@ -85,6 +85,10 @@ function App() {
         const res = await post("/api/ask", args);
         return (await res.json().catch(() => ({}))) as { slide?: never; error?: string };
       },
+      async askCover(args) {
+        const res = await post("/api/ask-cover", args);
+        return (await res.json().catch(() => ({}))) as { cover?: never; error?: string };
+      },
       async freeForm(args) {
         const res = await post("/api/free-form", args);
         return (await res.json().catch(() => ({}))) as { slide?: never; error?: string };

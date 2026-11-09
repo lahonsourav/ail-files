@@ -20,6 +20,7 @@ import { mergeDecks } from "../edit/deckMerge.js";
 import { moveDrawn } from "../edit/recordedMove.js";
 import { describeChange } from "../edit/describeChange.js";
 import { needsFreeForm } from "../edit/slideAsk.js";
+import { applyCover, coverOf } from "../edit/coverAsk.js";
 import SlideHandles, { type BoxRef } from "./SlideHandles.js";
 import ColorField from "./ColorField.js";
 import PictureSelect from "./PictureSelect.js";
@@ -495,7 +496,35 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     setAskNote(problem ? { kind: "error", text: problem } : { kind: "done", text: "Editing is on for this slide. Drag its parts, or press Undo." });
     return problem;
   }
+  // The cover is not a slide: asking about it changes the deck's own title, subtitle, detail lines, colours, font style and background picture.
+  async function askCover(prompt: string, opts?: { voice?: boolean }): Promise<string | null> {
+    if (!host.askCover) return "Pick a slide first.";
+    const before = JSON.stringify(coverOf(latestDeck.current));
+    try {
+      const data = await host.askCover({
+        prompt,
+        cover: coverOf(latestDeck.current),
+        total: latestDeck.current.slides.length,
+        images: images.map((i) => ({ id: i.id, label: i.label, description: i.description, width: i.width, height: i.height })),
+        ...(opts?.voice ? { fast: true } : {}),
+      });
+      if (opts?.voice) {
+        track({ type: "talk_request", ok: !!data.cover });
+        if (data.limited) track({ type: "talk_limit" });
+      }
+      if (!data.cover) return data.error ?? "Couldn't change the cover. Try again.";
+      if (Object.keys(data.cover).length === 0) return "On the cover I can change the title, subtitle, details, colours, font and picture. Nothing was changed.";
+      if (JSON.stringify(coverOf(latestDeck.current)) !== before) return `The cover changed while ${assistantName} was working. Ask again.`;
+      spoken.current = "Done. I changed the cover.";
+      change(applyCover(latestDeck.current, data.cover), `deck.cover.ask.${Date.now()}`);
+      return null;
+    } catch {
+      if (opts?.voice) track({ type: "talk_request", ok: false });
+      return `Couldn't reach ${assistantName}. Check your connection and try again.`;
+    }
+  }
   async function askSlide(prompt: string, opts?: { voice?: boolean }): Promise<string | null> {
+    if (sel === "deck") return askCover(prompt, opts);
     if (typeof sel !== "number") return "Pick a slide first.";
     const index = sel;
     const original = deck.slides[index];
@@ -850,8 +879,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
             </div>
           )}
           {typeof sel === "number" && (
-            <>
-              <div className={dim}>
+            <div className={dim}>
               <SlideInsert
                 key={`ins${sel}`}
                 slide={deck.slides[sel]}
@@ -860,9 +888,11 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
               />
-              </div>
-              <SlideAsk slideKey={sel} onCommand={runCommand} track={track} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
-            </>
+            </div>
+          )}
+          {/* The chat box and Talk: on every slide, and on the cover when the host can change a cover. */}
+          {(typeof sel === "number" || (sel === "deck" && !!host.askCover)) && (
+            <SlideAsk slideKey={sel} onCommand={runCommand} track={track} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
           )}
         </section>
 
@@ -950,7 +980,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
       </main>
 
       {/* Room under the page for the chat box, which is fixed to the bottom of a phone screen. */}
-      {typeof sel === "number" && <div aria-hidden className="sm:hidden h-28 shrink-0" />}
+      {(typeof sel === "number" || (sel === "deck" && !!host.askCover)) && <div aria-hidden className="sm:hidden h-28 shrink-0" />}
 
       {dialogs}
 
