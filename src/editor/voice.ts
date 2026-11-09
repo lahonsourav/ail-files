@@ -225,7 +225,7 @@ export function parseNavCommand(text: string): NavCommand | null {
     .replace(/^((please|ok|okay|now) )+/, "")
     .replace(/( (please|now))+$/, "");
   const go = "(?:(?:go|move|jump|switch|turn|flip) (?:on )?(?:to |onto )?)?"; // "go to ", "move on to ", or nothing
-  const slide = "(?: (?:slide|page))?";
+  const slide = "(?: (?:slide|page|one))?";
   const the = "(?:the )?";
   // Hindi and Hinglish ("agli slide", "pichli slide", "pehli slide", "aakhri slide", and the same in Devanagari). Whole sentence only, like the English ones.
   const hiSlide = "(?: ?(?:slide|page|स्लाइड|पेज))?";
@@ -278,19 +278,31 @@ export function parseAnswer(text: string): "yes" | "no" | null {
 
 /**
  * "…change the list to a table, next slide": an edit request with a slide move at the very end. Returns the request and the move, or null.
- * The move must be set apart by a comma, "then" or "and then", or be the exact words "next slide" / "next page" after something that does
- * not end in a preposition ("put a table in the next slide" is only an edit).
+ * The move can be set apart by a comma, a full stop, "and", "and then", "then" or "after that" ("…to a table and go to the next slide",
+ * "…then slide 4", "…, agli slide"), or be the exact words "next slide" / "next page" right after the request when that does not end in a
+ * preposition ("put a table in the next slide" is only an edit). A bare "back", "forward" or "move on" (without "go to", "go back") only counts after a comma, a full
+ * stop or "then", since "…and back" could be part of an edit.
  */
 export function splitTrailingNav(text: string): { request: string; nav: NavCommand } | null {
-  const raw = text.trim();
+  const raw = text.trim().replace(/[.!?]+$/, "").trim();
   if (!raw || parseNavCommand(raw)) return null;
-  const separated = /^(.{4,}?)(?:\s*[,;]\s*|\s+and then\s+|\s+then\s+|\s+after that\s+)((?:go to |move to |jump to )?(?:the )?(?:next|previous|first|last)(?: slide| page)?|go back|(?:go to |jump to )?(?:slide|page) \w+)[.!?]?$/i.exec(raw);
-  if (separated) {
-    const nav = parseNavCommand(separated[2]);
-    if (nav) return { request: separated[1].trim(), nav };
+  const SEPARATOR = /\s*[,;.]\s*|\s+(?:and then|and also|and after that|and|then|after that)\s+/gi;
+  const cuts = [...raw.matchAll(SEPARATOR)];
+  for (let i = cuts.length - 1; i >= 0; i--) {
+    const cut = cuts[i];
+    // The request can end on a connecting word of its own ("…to a table, and then …": the cut found "then", the "and" belongs to the move).
+    const head = raw.slice(0, cut.index).trim().replace(/[\s,;]+(?:and also|also|and)$/i, "").replace(/[\s,;]+$/, "");
+    // After a comma the move can still start with a connecting word ("…, and then move to the next slide").
+    const tail = raw.slice(cut.index + cut[0].length).trim().replace(/^(?:and then|and also|and after that|and|then|after that)\s+/i, "");
+    if (head.length < 4 || !tail) continue;
+    const nav = parseNavCommand(tail);
+    if (!nav) continue;
+    const firm = /[,;.]/.test(cut[0]) || /then|after that/i.test(cut[0]);
+    if (!firm && /^(?:back|backward|backwards|forward|ahead|on|move on|go on|move forward)$/i.test(tail.replace(/\s+(?:please|now)$/i, ""))) continue;
+    return { request: head, nav };
   }
-  const bare = /^(.{4,}?)\s+((?:go to )?(?:the )?next (?:slide|page))[.!?]?$/i.exec(raw);
-  if (bare && !/\b(in|on|to|of|for|at|from|after|before|and|with|into)$/i.test(bare[1].trim())) {
+  const bare = /^(.{4,}?)\s+((?:(?:go|move|jump) to )?(?:the )?next (?:slide|page)(?: please)?)$/i.exec(raw);
+  if (bare && !/\b(in|on|to|of|for|at|from|after|before|and|with|into|by)$/i.test(bare[1].trim())) {
     const nav = parseNavCommand(bare[2]);
     if (nav) return { request: bare[1].trim(), nav };
   }

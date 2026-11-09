@@ -245,7 +245,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
               <p className="text-sm text-[var(--ds-text-secondary)]">
                 {busy ? `${capitalName} is on it. I will listen again when it is done.` : voice === "paused" ? "Paused." : "Listening. Just tell me what to change. Say \"stop\" to finish."}
               </p>
-              {!hintSeen && !busy && <p className="mt-0.5 text-[11px] text-[var(--ds-text-muted)]">Try: &ldquo;Make the title shorter&rdquo;, &ldquo;Next slide&rdquo;, &ldquo;Undo&rdquo;.</p>}
+              {!hintSeen && !busy && <p className="mt-0.5 text-[11px] text-[var(--ds-text-muted)]">Try: &ldquo;Make the title shorter&rdquo;, &ldquo;Next slide&rdquo;, &ldquo;Undo&rdquo;, or both in one go: &ldquo;Make the title shorter, next slide&rdquo;.</p>}
             </div>
             <label className="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-[var(--ds-text-secondary)] cursor-pointer">
               <input

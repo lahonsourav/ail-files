@@ -288,6 +288,22 @@ describe("more spoken commands", () => {
     expect(splitTrailingNav("make the text bigger and then go to slide 3")).toEqual({ request: "make the text bigger", nav: { to: "number", n: 3 } });
     expect(splitTrailingNav("make the title shorter next slide")).toEqual({ request: "make the title shorter", nav: { to: "next" } });
   });
+  it.each([
+    ["change the list to a table and next slide", "change the list to a table", { to: "next" }],
+    ["change the list to a table and go to the next slide", "change the list to a table", { to: "next" }],
+    ["change the list to a table, and then move to the next slide", "change the list to a table", { to: "next" }],
+    ["change the list to a table. Next slide.", "change the list to a table", { to: "next" }],
+    ["change the list to a table then go to slide 4", "change the list to a table", { to: "number", n: 4 }],
+    ["make the title shorter, then next one", "make the title shorter", { to: "next" }],
+    ["make the title shorter and go to the next page please", "make the title shorter", { to: "next" }],
+    ["make the title shorter and then go back", "make the title shorter", { to: "previous" }],
+    ["make the title shorter and go back", "make the title shorter", { to: "previous" }],
+    ["make the title bigger, move on", "make the title bigger", { to: "next" }],
+    ["make the title shorter, agli slide", "make the title shorter", { to: "next" }],
+    ["change the background to blue and the text colour to white and change the list to a table next slide", "change the background to blue and the text colour to white and change the list to a table", { to: "next" }],
+  ])("finds the move: %s", (said, request, nav) => expect(splitTrailingNav(said)).toEqual({ request, nav }));
+  it.each(["make the logo bigger and back", "make the logo bigger and move on", "make the title shorter and forward", "change the list to a table and the next slide too"])("keeps this as one edit: %s", (said) => expect(splitTrailingNav(said)).toBeNull());
+
   it.each(["next slide", "put a table in the next slide", "make the next slide shorter", "change the list to a table", "go to the first slide of the story"])("has no trailing move: %s", (said) => expect(splitTrailingNav(said)).toBeNull());
 
   it.each([
