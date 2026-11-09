@@ -483,14 +483,14 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
         deck: { background: deck.background, accent: deck.accent, fontPair: deck.fontPair },
         images: images.map((i) => ({ id: i.id, label: i.label, width: i.width, height: i.height })),
       });
-      if (!data.slide) problem = data.error ?? "Couldn't turn on free-form for this slide.";
+      if (!data.slide) problem = data.error ?? "Couldn't turn on editing for this slide.";
       else if (latestDeck.current.slides[index] !== original) problem = "The slide changed meanwhile. Try again.";
       else change(updateSlide(latestDeck.current, index, data.slide), `${index}.freeform.${Date.now()}`);
     } catch {
       problem = "Couldn't reach the server. Check your connection and try again.";
     }
     setAsking(false);
-    setAskNote(problem ? { kind: "error", text: problem } : { kind: "done", text: "This slide is free-form now. Drag its parts, or press Undo." });
+    setAskNote(problem ? { kind: "error", text: problem } : { kind: "done", text: "Editing is on for this slide. Drag its parts, or press Undo." });
     return problem;
   }
   async function askSlide(prompt: string, opts?: { voice?: boolean }): Promise<string | null> {
@@ -532,7 +532,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
       }
       if (!data.slide) return data.error ?? "Couldn't change the slide. Try again.";
       if (latestDeck.current.slides[index] !== original) return `The slide changed while ${assistantName} was working. Ask again.`;
-      spoken.current = (converted ? "Free-form is on for this slide. " : "") + describeChange(base, data.slide);
+      spoken.current = (converted ? "Editing is on for this slide. " : "") + describeChange(base, data.slide);
       change(updateSlide(latestDeck.current, index, data.slide), `${index}.ask.${Date.now()}`);
       return null;
     } catch {
