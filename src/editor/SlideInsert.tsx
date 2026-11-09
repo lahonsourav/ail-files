@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePhone } from "./usePhone.js";
 import { newSlidePicture } from "../edit/deckEdit.js";
 import type { SlideContent } from "../pptx/presentationBuilder.js";
 import type { PictureChoice } from "./SlideForm.js";
@@ -26,6 +27,7 @@ export default function SlideInsert({
   onPlaced: (index: number) => void;
 }) {
   const [error, setError] = useState("");
+  const phone = usePhone();
   const place = (id: string, width?: number, height?: number) => {
     const known = pictures.find((p) => p.id === id);
     const placed = placedPictures(slide);
@@ -34,21 +36,22 @@ export default function SlideInsert({
   };
 
   return (
-    <div role="group" aria-label="Add to this slide" className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 sm:px-4 py-2 border-t border-[var(--ds-border-muted)] shrink-0">
-      <span className="text-[11px] uppercase tracking-wide text-[var(--ds-text-muted)]">Pictures</span>
+    <div role="group" aria-label="Add to this slide" className="flex flex-wrap max-sm:flex-nowrap items-center gap-x-4 max-sm:gap-x-3 gap-y-1.5 px-3 sm:px-4 py-2 border-t border-[var(--ds-border-muted)] shrink-0">
+      <span className="text-[11px] uppercase tracking-wide text-[var(--ds-text-muted)] max-sm:hidden">Pictures</span>
       {pictures.length > 0 && (
         <PictureSelect
           ariaLabel="Add one of my pictures"
           accent
-          className="w-56"
+          className="w-56 max-sm:w-auto max-sm:flex-1 max-sm:min-w-0"
+          buttonClassName="max-sm:!text-sm max-sm:!py-2.5"
           value=""
-          options={[{ value: "", label: "+ Add one of my pictures", noSwatch: true }, ...pictures.map((x) => ({ value: x.id, label: `${x.id} · ${x.label}`, thumb: x.thumb }))]}
+          options={[{ value: "", label: phone ? "+ Add existing" : "+ Add one of my pictures", noSwatch: true }, ...pictures.map((x) => ({ value: x.id, label: `${x.id} · ${x.label}`, thumb: x.thumb }))]}
           onChange={(id) => id && place(id)}
         />
       )}
       {onUploadPicture && (
-      <label className="text-xs font-medium text-[var(--ds-accent)] hover:underline cursor-pointer">
-        + Upload a new picture
+      <label className="text-xs max-sm:text-sm max-sm:whitespace-nowrap max-sm:py-2.5 font-medium text-[var(--ds-accent)] hover:underline cursor-pointer">
+        {phone ? "+ Upload new" : "+ Upload a new picture"}
         <input
           type="file"
           accept="image/png,image/jpeg,image/webp"
@@ -67,8 +70,8 @@ export default function SlideInsert({
       </label>
       )}
       {hasSlideOptions(slide) && (
-        <button type="button" onClick={() => onChange(resetSlideOptions(slide), "opt.reset")} className="text-xs font-medium text-[var(--ds-accent)] hover:underline ml-auto">
-          Reset to the deck&apos;s look
+        <button type="button" onClick={() => onChange(resetSlideOptions(slide), "opt.reset")} className="text-xs max-sm:text-sm max-sm:whitespace-nowrap max-sm:py-2.5 font-medium text-[var(--ds-accent)] hover:underline ml-auto">
+          {phone ? "Reset" : "Reset to the deck's look"}
         </button>
       )}
       {error && <p role="alert" className="basis-full text-xs text-red-500">{error}</p>}

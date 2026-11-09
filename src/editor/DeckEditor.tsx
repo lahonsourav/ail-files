@@ -13,6 +13,7 @@ import SlideAsk, { type VoiceCommand, type VoiceCommandResult, type VoicePhase }
 import type { NavCommand } from "./voice.js";
 import SuccessTick from "./SuccessTick.js";
 import { useFlip } from "./useFlip.js";
+import { usePhone } from "./usePhone.js";
 import { MOTION, previewOrder } from "./motion.js";
 import { mergeDecks } from "../edit/deckMerge.js";
 import { moveDrawn } from "../edit/recordedMove.js";
@@ -112,6 +113,8 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const [notice, setNotice] = useState("");
   const [missingPictures, setMissingPictures] = useState(false); // the last download stopped because pictures are not on this device
   const [versions, setVersions] = useState<{ id: string; version: number; createdAt: string }[] | null>(null);
+  const phone = usePhone();
+  const pickedPanelRef = useRef<HTMLDivElement>(null); // the settings of the tapped part, above the slide on a phone
   const [addOpen, setAddOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null); // the "+ Add slide" menu at the end of the strip
   const addAfterRef = useRef<HTMLDivElement>(null); // the templates opened under the selected slide
@@ -549,6 +552,34 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     return !!placedPictures(slide)[activeBox.index];
   })();
   const pickedNow = pickedExists ? activeBox : null;
+  // The settings of the picked part (a free-form element or a placed picture). On a phone they open above the slide, so the slide is not
+  // covered and the part can still be seen while it is changed; from a tablet up they are in the column beside the slide.
+  const pickedPanel =
+    pickedNow?.list === "elements" ? (
+      <ElementPanel
+        key={`el${current}.${pickedNow.index}`}
+        slide={deck.slides[current]}
+        pictures={choices}
+        index={pickedNow.index}
+        defaultTextColor={readableOn(((deck.slides[current] as unknown as { background?: unknown }).background as string | undefined) ?? effective.background ?? "FFFFFF")}
+        onSelect={(index) => setPickedBox({ slide: current, list: "elements", index })}
+        onBack={() => setPickedBox(null)}
+        onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)}
+      />
+    ) : pickedNow?.list === "pictures" ? (
+      <PicturePanel
+        key={`pic${current}.${pickedNow.index}`}
+        slide={deck.slides[current]}
+        pictures={choices}
+        index={pickedNow.index}
+        onBack={() => setPickedBox(null)}
+        onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)}
+      />
+    ) : null;
+  const pickedKey = pickedNow ? `${pickedNow.list}.${pickedNow.index}` : "";
+  useEffect(() => {
+    if (phone && pickedKey) pickedPanelRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [phone, pickedKey]);
   function moveBoxTo(ref: BoxRef, box: Box) {
     if (typeof sel !== "number") return;
     // The drawn slide comes from the server a moment after the drag, so move what is drawn for this part right now, from where it is
@@ -743,14 +774,15 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 </Fragment>
               );
             })}
-            <div className="relative shrink-0 self-center lg:self-auto">
-              <button type="button" onClick={() => setAddOpen((o) => !o)} aria-expanded={addOpen} className="w-24 lg:w-full px-3 py-2 rounded-lg border border-dashed border-[var(--ds-border-muted)] text-xs font-medium text-[var(--ds-text-secondary)] hover:text-[var(--ds-text-primary)] hover:border-[var(--ds-accent)]">
+            <div className="relative shrink-0 self-center lg:self-auto max-sm:order-first max-sm:sticky max-sm:left-0 max-sm:z-10 max-sm:self-stretch max-sm:flex max-sm:bg-[var(--ds-bg-surface)] max-sm:pr-1">
+              {/* On a phone this sits first in the strip and stays in view while the slides scroll, so adding a slide is always one tap away. */}
+              <button type="button" onClick={() => setAddOpen((o) => !o)} aria-expanded={addOpen} className="w-24 lg:w-full max-sm:w-16 max-sm:px-1 max-sm:text-[11px] max-sm:leading-tight px-3 py-2 rounded-lg border border-dashed border-[var(--ds-border-muted)] text-xs font-medium text-[var(--ds-text-secondary)] hover:text-[var(--ds-text-primary)] hover:border-[var(--ds-accent)]">
                 + Add slide
               </button>
               {addOpen && (
-                <div ref={addMenuRef} role="menu" className="absolute left-0 bottom-full lg:static lg:bottom-auto lg:w-full mt-1 z-20 w-52 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
+                <div ref={addMenuRef} role="menu" className="absolute left-0 bottom-full lg:static lg:bottom-auto lg:w-full mt-1 z-20 w-52 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-28 max-sm:left-3 max-sm:z-40 max-sm:w-auto max-sm:max-h-[50dvh] max-sm:overflow-y-auto max-sm:grid max-sm:grid-cols-2 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
                   {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
-                    <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-2.5 py-1.5 rounded-md hover:bg-[var(--ds-bg-hover)]">{t.label}</button>
+                    <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-2.5 py-1.5 max-sm:py-3 rounded-md hover:bg-[var(--ds-bg-hover)]">{t.label}</button>
                   ))}
                 </div>
               )}
@@ -760,6 +792,11 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
 
         {/* The slide */}
         <section aria-label="Slide preview" className="min-w-0 min-h-0 flex flex-col" onPointerDown={() => setPickedBox(null)}>
+          {phone && pickedPanel && (
+            <div ref={pickedPanelRef} onPointerDown={(e) => e.stopPropagation()} className="mx-3 mt-3 max-h-[40dvh] overflow-y-auto rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] p-3 shadow-sm">
+              {pickedPanel}
+            </div>
+          )}
           <div className="flex-1 min-h-0 p-3 sm:p-4 lg:[container-type:size] flex items-center justify-center">
             <div className="w-full lg:w-[min(100cqw,calc(100cqh*16/9))] max-w-[1100px]">
               <div className={`rounded-lg overflow-hidden border border-[var(--ds-border-muted)] shadow-sm bg-[var(--ds-bg-surface)] ring-4 transition-shadow duration-700 motion-reduce:transition-none ${flash ? "ring-[var(--ds-accent)]" : "ring-transparent"}`}>
@@ -864,26 +901,8 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               )}
             </div>
           ) : (
-            pickedNow?.list === "elements" ? (
-              <ElementPanel
-                key={`el${current}.${pickedNow.index}`}
-                slide={deck.slides[current]}
-                pictures={choices}
-                index={pickedNow.index}
-                defaultTextColor={readableOn(((deck.slides[current] as unknown as { background?: unknown }).background as string | undefined) ?? effective.background ?? "FFFFFF")}
-                onSelect={(index) => setPickedBox({ slide: current, list: "elements", index })}
-                onBack={() => setPickedBox(null)}
-                onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)}
-              />
-            ) : pickedNow?.list === "pictures" ? (
-              <PicturePanel
-                key={`pic${current}.${pickedNow.index}`}
-                slide={deck.slides[current]}
-                pictures={choices}
-                index={pickedNow.index}
-                onBack={() => setPickedBox(null)}
-                onChange={(next: SlideContent, key) => change(updateSlide(deck, current, next), `${current}.${key}`)}
-              />
+            pickedPanel && !phone ? (
+              pickedPanel
             ) : (
             <>
               <h2 className="text-sm font-semibold">Slide {current + 1}</h2>
@@ -892,7 +911,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
             )
           )}
           </div>
-          {typeof sel === "number" && !pickedNow && (
+          {typeof sel === "number" && !(pickedNow && !phone) && (
             <SlideLook
               key={`look${sel}`}
               slide={deck.slides[sel]}
@@ -905,6 +924,9 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
           )}
         </aside>
       </main>
+
+      {/* Room under the page for the chat box, which is fixed to the bottom of a phone screen. */}
+      {typeof sel === "number" && <div aria-hidden className="sm:hidden h-28 shrink-0" />}
 
       {dialogs}
 
