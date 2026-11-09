@@ -756,6 +756,8 @@ export interface CanvasShapeElement extends CanvasBox {
   type: "shape";
   shape: "rect" | "roundRect" | "ellipse" | "line";
   fillRole?: FillRole; // ignored for "line"
+  /** The shape's own fill colour as a 6 digit hex (no #), which wins over fillRole: for a colour the roles do not give (the coloured cards a layout turned into free-form keeps). */
+  fill?: string;
   borderRole?: "accent" | "body" | "none";
 }
 
@@ -1236,7 +1238,8 @@ function renderCanvasText(s: PptxGenJS.Slide, colors: ThemeColors, el: CanvasTex
 
 function renderCanvasShape(s: PptxGenJS.Slide, colors: ThemeColors, el: CanvasShapeElement): void {
   const isLine = el.shape === "line";
-  const fill = isLine ? undefined : resolveFillRole(el.fillRole ?? "accentSoft", colors);
+  const own = !isLine && el.fill && /^[0-9A-Fa-f]{6}$/.test(el.fill) ? { color: el.fill.toUpperCase() } : null;
+  const fill = isLine ? undefined : own ?? resolveFillRole(el.fillRole ?? "accentSoft", colors);
   const borderRole = el.borderRole ?? (isLine ? "accent" : "none");
   const line = borderRole === "none"
     ? { type: "none" as const }

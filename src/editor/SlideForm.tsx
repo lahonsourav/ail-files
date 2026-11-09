@@ -205,7 +205,10 @@ export function ElementPanel({ slide, pictures, index, onChange, onSelect, onBac
       {kind === "text" && (
         <ColorField label="Text colour" value={typeof item.color === "string" ? item.color : undefined} fallback={defaultTextColor} onChange={(hex) => (hex === undefined ? ctx.remove(["elements", index, "color"]) : ctx.set(["elements", index, "color"], hex))} />
       )}
-      {Object.entries(item).filter(([k]) => k !== "color").map(([k, v]) => (
+      {kind === "shape" && item.shape !== "line" && (
+        <ColorField label="Own fill colour" value={typeof item.fill === "string" ? item.fill : undefined} fallback="FFFFFF" onChange={(hex) => (hex === undefined ? ctx.remove(["elements", index, "fill"]) : ctx.set(["elements", index, "fill"], hex))} />
+      )}
+      {Object.entries(item).filter(([k]) => k !== "color" && k !== "fill").map(([k, v]) => (
         <Control key={k} k={k} value={v} path={["elements", index, k]} ctx={ctx} />
       ))}
       <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">

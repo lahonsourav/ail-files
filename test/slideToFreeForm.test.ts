@@ -128,3 +128,51 @@ describe("slideToFreeForm: what it will not guess", () => {
     expect(slideToFreeForm({ slide: deck.slides[0], drawn, icons: undefined, palette, logoDrawn: false })).toBeNull();
   });
 });
+
+describe("slideToFreeForm: a slide with many parts", () => {
+  const five = {
+    layout: "process",
+    title: "Sedan and executive class",
+    caption: "From entry-level elegance to flagship innovation",
+    steps: [
+      { title: "C-Class", description: "Entry-level luxury combining elegance and performance" },
+      { title: "E-Class", description: "Mid-size executive sedan with cutting-edge technology" },
+      { title: "S-Class", description: "Flagship sedan representing ultimate luxury and innovation" },
+      { title: "AMG Variants", description: "Performance variants available across all models" },
+      { title: "Smart Technology", description: "Advanced infotainment and autonomous driving features standard" },
+    ],
+  } as SlideContent;
+
+  it("keeps all five steps and the line under them, not only the first parts", async () => {
+    const { converted, drawn } = await convert(five);
+    const kept = normalizeDeck({ slides: [converted] }, { editing: true })!.slides[0] as unknown as { elements: { type: string; text?: string }[] };
+    const text = kept.elements.filter((e) => e.type === "text").map((e) => e.text).join(" ");
+    for (const w of ["C-Class", "E-Class", "S-Class", "AMG Variants", "Smart Technology", "flagship innovation", "autonomous driving"]) expect(text).toContain(w);
+    expect(kept.elements.length).toBeGreaterThan(16); // more than the 16 a model is asked to stay within
+    expect(drawnText(drawn).length).toBeGreaterThan(0);
+  });
+
+  it("keeps the colour of each card, so they do not all turn into the accent colour", async () => {
+    const coloured = { ...(five as object), steps: (five as unknown as { steps: unknown[] }).steps } as SlideContent;
+    const { converted } = await convert(coloured);
+    const shapes = (converted as unknown as { elements: { type: string; shape?: string; fill?: string; fillRole?: string }[] }).elements.filter((e) => e.type === "shape" && e.fill);
+    // The process layout colours each step differently: the free-form copy keeps those colours as exact fills.
+    const colours = new Set(shapes.map((s) => s.fill));
+    expect(colours.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it("turns the arrows between steps into arrow characters instead of plain squares", async () => {
+    const { converted } = await convert(five);
+    const els = (converted as unknown as { elements: { type: string; text?: string; shape?: string }[] }).elements;
+    expect(els.filter((e) => e.type === "text" && e.text === "→").length).toBe(4);
+  });
+
+  it("draws a shape's own fill instead of its role", async () => {
+    const slide = { layout: "canvas", title: "T", elements: [{ type: "shape", x: 1, y: 1, w: 2, h: 2, shape: "rect", fillRole: "accent", fill: "22AA66" }] } as SlideContent;
+    const normalized = normalizeDeck({ slides: [slide] }, { editing: true })!.slides[0] as unknown as { elements: { fill?: string }[] };
+    expect(normalized.elements[0].fill).toBe("22AA66");
+    const drawn = await recordDeck({ ...deck, title: undefined, subtitle: undefined, meta: undefined, slides: [normalized as unknown as SlideContent] } as SlideDeck, { pageNumbers: false });
+    const rect = drawn.slides[0].items.find((i) => i.kind === "shape" && i.shape === "rect" && (i.opts as { fill?: { color?: string } }).fill?.color === "22AA66");
+    expect(rect).toBeTruthy();
+  });
+});
