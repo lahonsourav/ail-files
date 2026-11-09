@@ -343,3 +343,28 @@ describe("trouble listening", () => {
     v.stop();
   });
 });
+
+import { bestVoice, voiceScore } from "../src/editor/voice";
+
+describe("choosing the most natural voice", () => {
+  const v = (name: string, lang: string, localService = true) => ({ name, lang, localService });
+  it("prefers a neural or network voice over the plain on-device one", () => {
+    const voices = [v("Microsoft David - English (United States)", "en-US"), v("Microsoft Aria Online (Natural) - English (United States)", "en-US", false), v("Google US English", "en-US", false)];
+    expect(bestVoice(voices, "en-US")?.name).toContain("Natural");
+    expect(bestVoice(voices.slice(0, 1).concat(voices.slice(2)), "en-US")?.name).toBe("Google US English");
+  });
+  it("prefers a premium or enhanced Apple voice, and never a novelty one", () => {
+    const voices = [v("Fred", "en-US"), v("Samantha", "en-US"), v("Ava (Premium)", "en-US"), v("Zarvox", "en-US")];
+    expect(bestVoice(voices, "en-US")?.name).toBe("Ava (Premium)");
+    expect(voiceScore(v("Zarvox", "en-US"), "en-US")!).toBeLessThan(0);
+  });
+  it("keeps to the language, and takes the exact region first", () => {
+    const voices = [v("Google हिन्दी", "hi-IN", false), v("Google UK English Female", "en-GB", false), v("Google US English", "en-US", false)];
+    expect(bestVoice(voices, "hi-IN")?.lang).toBe("hi-IN");
+    expect(bestVoice(voices, "en-GB")?.name).toBe("Google UK English Female");
+    expect(bestVoice(voices, "fr-FR")).toBeUndefined();
+  });
+  it("still finds a voice when only another region of the language is there", () => {
+    expect(bestVoice([v("Microsoft Neerja Online (Natural) - English (India)", "en-IN", false)], "en-US")?.lang).toBe("en-IN");
+  });
+});

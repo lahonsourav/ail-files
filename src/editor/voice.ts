@@ -325,15 +325,52 @@ export function primeSpeech(): void {
     const u = new SpeechSynthesisUtterance(" ");
     u.volume = 0;
     window.speechSynthesis.speak(u);
+    window.speechSynthesis.getVoices(); // starts loading the voice list, which Chrome fills in late
   } catch {
     /* not available: replies just stay silent */
   }
 }
 
+/** How good a voice is likely to sound for this language, or null if it cannot speak it. Network and "natural" voices sound far more human than the plain on-device ones. */
+export function voiceScore(v: { name: string; lang: string; localService?: boolean; default?: boolean }, lang: string): number | null {
+  const want = lang.toLowerCase();
+  const base = want.slice(0, 2);
+  const has = v.lang.toLowerCase().replace("_", "-");
+  if (!has.startsWith(base)) return null;
+  const n = v.name;
+  let score = 0;
+  if (has === want) score += 12;
+  else if (has.slice(0, 2) === base && want.includes("-") && has.includes("-")) score += 2; // another region of the same language
+  // The neural voices: Microsoft "Natural" and "Online", Apple "Premium", "Enhanced" and Siri, Google's network voices.
+  if (/natural|neural/i.test(n)) score += 60;
+  if (/\bonline\b/i.test(n)) score += 20;
+  if (/premium|enhanced|siri/i.test(n)) score += 45;
+  if (/google/i.test(n)) score += 35;
+  // Good on-device voices.
+  if (/\b(samantha|ava|allison|serena|karen|moira|tessa|daniel|lekha|rishi|veena|swara|neerja|prabhat|madhur)\b/i.test(n)) score += 15;
+  // The robotic and novelty ones.
+  if (/espeak|compact|novelty|\b(fred|albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox)\b/i.test(n)) score -= 100;
+  if (v.localService && !/natural|neural|premium|enhanced|siri/i.test(n)) score -= 5; // a plain on-device voice is the robotic one
+  if (v.default) score += 1;
+  return score;
+}
+
+/** The most natural voice the browser has for the language. */
+export function bestVoice<T extends { name: string; lang: string; localService?: boolean; default?: boolean }>(voices: T[], lang: string): T | undefined {
+  let best: T | undefined;
+  let bestScore = -Infinity;
+  for (const v of voices) {
+    const sc = voiceScore(v, lang);
+    if (sc !== null && sc > bestScore) {
+      best = v;
+      bestScore = sc;
+    }
+  }
+  return best;
+}
+
 function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
-  const voices = window.speechSynthesis.getVoices();
-  const base = lang.slice(0, 2).toLowerCase();
-  return voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase()) ?? voices.find((v) => v.lang.toLowerCase().startsWith(base) && v.localService) ?? voices.find((v) => v.lang.toLowerCase().startsWith(base));
+  return bestVoice(window.speechSynthesis.getVoices(), lang);
 }
 
 /** Says a short line aloud and resolves when it has been said (or after a safety timeout, or at once if the browser cannot speak). */
@@ -353,6 +390,7 @@ export function speak(text: string, lang: string): Promise<void> {
     u.lang = lang;
     const voice = pickVoice(lang);
     if (voice) u.voice = voice;
+    u.rate = 0.96; // a touch slower than the default sounds less hurried
     u.onend = finish;
     u.onerror = finish;
     window.speechSynthesis.cancel();
