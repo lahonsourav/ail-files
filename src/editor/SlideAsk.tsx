@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { VoiceSession, browserRecognition, isStopCommand, narrateWhile, parseActionCommand, parseAnswer, parseNavCommand, primeSpeech, speak, splitTrailingNav, type ActionCommand, type NavCommand, type VoiceState } from "./voice.js";
+import { VoiceSession, browserRecognition, isStopCommand, narrateWhile, parseActionCommand, parseAnswer, parseNavCommand, primeSpeech, preferredVoiceName, setPreferredVoiceName, speak, splitTrailingNav, voiceChoices, type ActionCommand, type NavCommand, type VoiceState } from "./voice.js";
 import type { VoiceEvent } from "./host.js";
 import { usePhone } from "./usePhone.js";
 
@@ -28,6 +28,41 @@ const SUGGESTIONS: [string, string][] = [
 const WORKING_LINES = ["Okay, working on it.", "Still on it.", "Just a moment more.", "Nearly there."];
 
 const SPEAK_KEY = "ail-files:voice-speak";
+
+/** Which voice speaks the replies: the most natural one the browser has (automatic), or one the person picks. The list is whatever this device offers. */
+function VoicePicker({ lang }: { lang: string }) {
+  const [voices, setVoices] = useState<{ name: string; lang: string }[]>([]);
+  const [value, setValue] = useState("");
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const load = () => setVoices(voiceChoices(lang));
+    load();
+    setValue(preferredVoiceName());
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, [lang]);
+  if (voices.length < 2) return null;
+  return (
+    <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[var(--ds-text-secondary)]">
+      Voice
+      <select
+        aria-label="Voice for spoken replies"
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setPreferredVoiceName(e.target.value);
+          void speak("This is how I sound.", lang);
+        }}
+        className="min-w-0 flex-1 max-w-[16rem] text-[11px] max-sm:text-sm px-1.5 py-1 rounded-md bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] outline-none"
+      >
+        <option value="">Automatic (most natural)</option>
+        {voices.map((v) => (
+          <option key={v.name} value={v.name}>{v.name}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 const HINT_KEY = "ail-files:voice-hint-seen";
 
 /** What a spoken command asks the editor to do, and what the editor answers: the words to say back, and whether it now waits for a yes or no. */
@@ -248,6 +283,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
               <p className="text-sm text-[var(--ds-text-secondary)]">
                 {busy ? `${capitalName} is on it. I will listen again when it is done.` : voice === "paused" ? "Paused." : "Listening. Just tell me what to change. Say \"stop\" to finish."}
               </p>
+              {speakBack && <VoicePicker lang={lang} />}
               {!hintSeen && !busy && <p className="mt-0.5 text-[11px] text-[var(--ds-text-muted)]">Try: &ldquo;Make the title shorter&rdquo;, &ldquo;Next slide&rdquo;, &ldquo;Undo&rdquo;, or both in one go: &ldquo;Make the title shorter, next slide&rdquo;.</p>}
             </div>
             <label className="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-[var(--ds-text-secondary)] cursor-pointer">

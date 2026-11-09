@@ -369,8 +369,41 @@ export function bestVoice<T extends { name: string; lang: string; localService?:
   return best;
 }
 
+const VOICE_NAME_KEY = "ail-files:voice-name";
+
+/** The voice the person chose in talk mode ("" for automatic). */
+export function preferredVoiceName(): string {
+  try {
+    return window.localStorage.getItem(VOICE_NAME_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setPreferredVoiceName(name: string): void {
+  try {
+    if (name) window.localStorage.setItem(VOICE_NAME_KEY, name);
+    else window.localStorage.removeItem(VOICE_NAME_KEY);
+  } catch {
+    /* storage blocked: the choice lasts until the page closes */
+  }
+}
+
+/** The voices the browser has for the language, the most natural first, for the person to choose from. */
+export function voiceChoices(lang: string): { name: string; lang: string }[] {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return [];
+  return window.speechSynthesis
+    .getVoices()
+    .map((v) => ({ v, score: voiceScore(v, lang) }))
+    .filter((x): x is { v: SpeechSynthesisVoice; score: number } => x.score !== null && x.score > -50)
+    .sort((a, b) => b.score - a.score)
+    .map(({ v }) => ({ name: v.name, lang: v.lang }));
+}
+
 function pickVoice(lang: string): SpeechSynthesisVoice | undefined {
-  return bestVoice(window.speechSynthesis.getVoices(), lang);
+  const voices = window.speechSynthesis.getVoices();
+  const chosen = preferredVoiceName();
+  return (chosen ? voices.find((v) => v.name === chosen) : undefined) ?? bestVoice(voices, lang);
 }
 
 /** Says a short line aloud and resolves when it has been said (or after a safety timeout, or at once if the browser cannot speak). */

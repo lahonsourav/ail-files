@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import SlideStage from "./SlideStage.js";
 import SlideForm, { ElementPanel } from "./SlideForm.js";
 import SlideToolbar from "./SlideToolbar.js";
@@ -114,6 +115,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const [missingPictures, setMissingPictures] = useState(false); // the last download stopped because pictures are not on this device
   const [versions, setVersions] = useState<{ id: string; version: number; createdAt: string }[] | null>(null);
   const phone = usePhone();
+  const rootRef = useRef<HTMLDivElement>(null); // the editor's own root: the phone's add-slide sheet is drawn here, outside the scrolling strip
   const pickedPanelRef = useRef<HTMLDivElement>(null); // the settings of the tapped part, above the slide on a phone
   const [addOpen, setAddOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null); // the "+ Add slide" menu at the end of the strip
@@ -635,7 +637,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const shownSlide = recorded?.slides[(sel === "deck" ? 0 : sel + offset)];
 
   return (
-    <div className="min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
+    <div ref={rootRef} className="min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
       <header className={`${dim} flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shrink-0`}>
         {back}
         <h1 className="text-sm font-semibold truncate min-w-0 flex-1">{deck.title ?? "Untitled deck"}</h1>
@@ -785,13 +787,27 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               <button type="button" onClick={() => setAddOpen((o) => !o)} aria-expanded={addOpen} className="w-24 lg:w-full max-sm:w-16 max-sm:px-1 max-sm:text-[11px] max-sm:leading-tight px-3 py-2 rounded-lg border border-dashed border-[var(--ds-border-muted)] text-xs font-medium text-[var(--ds-text-secondary)] hover:text-[var(--ds-text-primary)] hover:border-[var(--ds-accent)]">
                 + Add slide
               </button>
-              {addOpen && (
-                <div ref={addMenuRef} role="menu" className="absolute left-0 bottom-full lg:static lg:bottom-auto lg:w-full mt-1 z-20 w-52 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-28 max-sm:left-3 max-sm:z-40 max-sm:w-auto max-sm:max-h-[50dvh] max-sm:overflow-y-auto max-sm:grid max-sm:grid-cols-2 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
+              {addOpen && !phone && (
+                <div ref={addMenuRef} role="menu" className="absolute left-0 bottom-full lg:static lg:bottom-auto lg:w-full mt-1 z-20 w-52 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
                   {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
-                    <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-2.5 py-1.5 max-sm:py-3 rounded-md hover:bg-[var(--ds-bg-hover)]">{t.label}</button>
+                    <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-2.5 py-1.5 rounded-md hover:bg-[var(--ds-bg-hover)]">{t.label}</button>
                   ))}
                 </div>
               )}
+              {/* On a phone the list is a sheet above the chat box, drawn in the editor's root (not inside the strip, which scrolls and clips),
+                  with a backdrop that closes it. */}
+              {addOpen && phone && rootRef.current &&
+                createPortal(
+                  <>
+                    <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/20" onClick={() => setAddOpen(false)} />
+                    <div ref={addMenuRef} role="menu" aria-label="Add a slide" className="fixed inset-x-3 bottom-[calc(7rem+env(safe-area-inset-bottom))] z-50 grid grid-cols-2 gap-1 max-h-[55dvh] overflow-y-auto rounded-xl border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-xl p-1.5">
+                      {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
+                        <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-3 py-3 rounded-lg hover:bg-[var(--ds-bg-hover)] active:bg-[var(--ds-bg-hover)]">{t.label}</button>
+                      ))}
+                    </div>
+                  </>,
+                  rootRef.current,
+                )}
             </div>
           </div>
         </aside>
