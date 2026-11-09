@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { VoiceSession, browserRecognition, isStopCommand, narrateWhile, parseActionCommand, parseAnswer, parseNavCommand, primeSpeech, speak, splitTrailingNav, type ActionCommand, type NavCommand, type VoiceState } from "./voice.js";
 import type { VoiceEvent } from "./host.js";
+import { usePhone } from "./usePhone.js";
 
 // The chat box under the slide: type what to change and the assistant rewrites this slide only, as one step the person can undo. It stays
 // put at the bottom of the middle column. `onSend` does the asking and returns an error message, or null when the slide was changed;
@@ -41,6 +42,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
   const name = assistantName;
   const capitalName = name.charAt(0).toUpperCase() + name.slice(1);
   const [text, setText] = useState("");
+  const phone = usePhone();
   const [seenKey, setSeenKey] = useState(slideKey);
   if (seenKey !== slideKey) {
     setSeenKey(slideKey);
@@ -219,20 +221,21 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
       onClick={toggleVoice}
       aria-pressed={talking}
       title={talking ? "Stop talking" : `Talk to ${name}: just speak, and pause when you are done`}
-      className={`shrink-0 h-10 px-3 text-xs font-medium rounded-xl border ${talking ? "border-[var(--ds-accent)] text-[var(--ds-accent)]" : "border-[var(--ds-border-muted)] text-[var(--ds-text-secondary)] hover:bg-[var(--ds-bg-hover)]"}`}
+      aria-label={talking ? "Stop talking" : "Talk"}
+      className={`shrink-0 h-10 px-3 max-sm:w-11 max-sm:px-0 max-sm:flex max-sm:items-center max-sm:justify-center text-xs font-medium rounded-xl border ${talking ? "border-[var(--ds-accent)] text-[var(--ds-accent)]" : "border-[var(--ds-border-muted)] text-[var(--ds-text-secondary)] hover:bg-[var(--ds-bg-hover)]"}`}
     >
       <span className="inline-flex items-center gap-1.5">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="9" y="3" width="6" height="11" rx="3" />
           <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
         </svg>
-        {talking ? "Stop talking" : "Talk"}
+        <span className="max-sm:hidden">{talking ? "Stop talking" : "Talk"}</span>
       </span>
     </button>
   );
 
   return (
-    <section aria-label={`Ask ${name} about this slide`} className="shrink-0 border-t border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] px-3 sm:px-4 pt-2.5 pb-3">
+    <section aria-label={`Ask ${name} about this slide`} className="shrink-0 border-t border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] px-3 sm:px-4 pt-2.5 pb-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:z-30 max-sm:pt-2 max-sm:pb-[max(0.5rem,env(safe-area-inset-bottom))] max-sm:shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
       <div className="mx-auto w-full max-w-3xl space-y-1.5">
         {talking ? (
           // Talk mode: no typed text. The mark animates over the slide while it listens and works; this bar only says what is happening.
@@ -265,7 +268,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
             {micButton}
           </div>
         ) : (
-          <div className="flex items-end gap-2">
+          <div className="flex items-end max-sm:items-center gap-2">
             <textarea
               aria-label={`Ask ${name} to change this slide`}
               rows={2}
@@ -280,17 +283,17 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
                   void send(text, true);
                 }
               }}
-              placeholder={`Ask ${name} to change this slide`}
-              className="flex-1 min-w-0 text-sm px-3 py-2 rounded-xl bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] focus:border-[var(--ds-accent)] outline-none resize-none disabled:opacity-60"
+              placeholder={phone ? "Change this slide…" : `Ask ${name} to change this slide`}
+              className="flex-1 min-w-0 text-sm max-sm:text-base max-sm:h-10 max-sm:py-[7px] max-sm:leading-6 max-sm:overflow-hidden px-3 py-2 rounded-xl bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] focus:border-[var(--ds-accent)] outline-none resize-none disabled:opacity-60"
             />
             {micButton}
             <button
               type="button"
               onClick={() => void send(text, true)}
               disabled={!text.trim() || busy}
-              className="shrink-0 h-10 px-4 text-xs font-medium rounded-xl bg-[var(--ds-accent)] text-[var(--ds-on-accent)] disabled:opacity-40"
+              className="shrink-0 h-10 px-4 max-sm:px-3 text-xs font-medium rounded-xl bg-[var(--ds-accent)] text-[var(--ds-on-accent)] disabled:opacity-40"
             >
-              {busy ? "Changing…" : "Change slide"}
+              {busy ? "Changing…" : (<><span className="max-sm:hidden">Change slide</span><span className="sm:hidden">Change</span></>)}
             </button>
           </div>
         )}
@@ -311,7 +314,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
         )}
         {voice === "blocked" && <p role="status" className="text-[11px] text-red-500">The microphone is blocked. Allow it for this site in your browser settings, then press Talk again.</p>}
         {voice === "unsupported" && <p role="status" className="text-[11px] text-red-500">This browser cannot listen. Type your request instead.</p>}
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex items-center gap-1.5 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:[scrollbar-width:none] sm:flex-wrap">
           {!talking &&
             SUGGESTIONS.map(([label, prompt]) => (
               <button
@@ -319,12 +322,12 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
                 type="button"
                 onClick={() => void send(prompt, false)}
                 disabled={busy}
-                className="text-[11px] px-2 py-1 rounded-full border border-[var(--ds-border-muted)] text-[var(--ds-text-secondary)] hover:text-[var(--ds-text-primary)] hover:bg-[var(--ds-bg-hover)] disabled:opacity-40"
+                className="shrink-0 text-[11px] px-2 py-1 rounded-full border border-[var(--ds-border-muted)] text-[var(--ds-text-secondary)] hover:text-[var(--ds-text-primary)] hover:bg-[var(--ds-bg-hover)] disabled:opacity-40"
               >
                 {label}
               </button>
             ))}
-          <p role="status" className={`text-[11px] ml-auto ${note?.kind === "error" ? "text-red-500" : "text-[var(--ds-text-muted)]"}`}>
+          <p role="status" className={`shrink-0 text-[11px] ml-auto max-sm:empty:hidden ${note?.kind === "error" ? "text-red-500" : "text-[var(--ds-text-muted)]"}`}>
             {busy && !talking ? `${capitalName} is changing this slide…` : note?.text ?? ""}
           </p>
         </div>
