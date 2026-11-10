@@ -469,7 +469,8 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
       flashStage();
       if (opts?.voice) lastVoiceEdit.current = Date.now();
     }
-    setAskNote(problem ? { kind: "error", text: problem } : { kind: "done", text: `${spoken.current ?? "Done."} Not right? Press Undo.` });
+    // A spoken request is answered aloud, so the same words are not written on the screen too (a problem still is).
+    setAskNote(problem ? { kind: "error", text: problem } : opts?.voice ? null : { kind: "done", text: `${spoken.current ?? "Done."} Not right? Press Undo.` });
     return problem;
   }
   // Turning a normal slide into a free-form one is done by the server from how the slide is drawn: instant, no model, no cost.
