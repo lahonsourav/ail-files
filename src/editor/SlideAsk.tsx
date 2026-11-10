@@ -43,8 +43,7 @@ function VoicePicker({ lang }: { lang: string }) {
   }, [lang]);
   if (voices.length < 2) return null;
   return (
-    <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[var(--ds-text-secondary)]">
-      Voice
+    <label className="flex">
       <select
         aria-label="Voice for spoken replies"
         value={value}
@@ -53,9 +52,9 @@ function VoicePicker({ lang }: { lang: string }) {
           setPreferredVoiceName(e.target.value);
           void speak("This is how I sound.", lang);
         }}
-        className="min-w-0 flex-1 max-w-[16rem] text-[11px] max-sm:text-sm px-1.5 py-1 rounded-md bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] outline-none"
+        title="Voice for spoken replies" className="w-[8.5rem] max-sm:w-[6.5rem] text-[11px] max-sm:text-xs px-1.5 py-1 rounded-md bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] outline-none"
       >
-        <option value="">Automatic (most natural)</option>
+        <option value="">Voice: auto</option>
         {voices.map((v) => (
           <option key={v.name} value={v.name}>{v.name}</option>
         ))}
@@ -283,10 +282,11 @@ export default function SlideAsk({ subject = "slide", onSend, busy, note, assist
               <p className="text-sm text-[var(--ds-text-secondary)]">
                 {busy ? `${capitalName} is on it. I will listen again when it is done.` : voice === "paused" ? "Paused." : "Listening. Just tell me what to change. Say \"stop\" to finish."}
               </p>
-              {speakBack && <VoicePicker lang={lang} />}
               {!hintSeen && !busy && <p className="mt-0.5 text-[11px] text-[var(--ds-text-muted)]">Try: &ldquo;Make the title shorter&rdquo;, &ldquo;Next slide&rdquo;, &ldquo;Undo&rdquo;, or both in one go: &ldquo;Make the title shorter, next slide&rdquo;.</p>}
             </div>
-            <label className="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-[var(--ds-text-secondary)] cursor-pointer">
+            {/* "Speak replies" with the voice choice right under it, so the text on the left keeps its room. */}
+            <div className="shrink-0 flex flex-col items-start gap-1">
+            <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--ds-text-secondary)] cursor-pointer">
               <input
                 type="checkbox"
                 checked={speakBack}
@@ -301,6 +301,8 @@ export default function SlideAsk({ subject = "slide", onSend, busy, note, assist
               />
               Speak replies
             </label>
+            {speakBack && <VoicePicker lang={lang} />}
+            </div>
             {micButton}
           </div>
         ) : (
