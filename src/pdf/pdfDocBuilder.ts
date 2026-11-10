@@ -68,6 +68,8 @@ export interface PdfSection {
   // an exact slide count comes from the model emitting exactly that many
   // entries in "slides" for a deck. See the generation prompt's fullGeneralPdfSuffix.
   newPage?: boolean;
+  // Which section of an editor this is; set only when drawing a preview with `anchors`.
+  anchor?: number;
 }
 
 export interface GeneralPdf {

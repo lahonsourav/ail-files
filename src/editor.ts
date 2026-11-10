@@ -10,6 +10,11 @@
 
 export { default as DeckEditor, barButtonClass, type DeckEditorProps } from "./editor/DeckEditor.js";
 export { saveBlob } from "./editor/host.js";
+// The document editor, for Word and PDF documents (see DocEditorHost).
+export { default as DocEditor, type DocEditorProps } from "./editor/DocEditor.js";
+export type { DocEditorHost, DocSaveResult } from "./editor/docHost.js";
+export { default as DocPage } from "./editor/DocPage.js";
+export { default as DocSectionForm } from "./editor/DocSectionForm.js";
 export type { DeckEditorHost, EditorPicture, EditorLogo, PictureMeta, AskArgs, FreeFormArgs, SaveResult } from "./editor/host.js";
 // The parts, for a program that wants to build its own screen from them.
 export { default as SlideStage } from "./editor/SlideStage.js";

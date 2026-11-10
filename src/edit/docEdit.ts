@@ -55,6 +55,8 @@ export interface DocSection {
   columns?: { left: DocColumnBlock; right: DocColumnBlock };
   /** Starts this section on a new page (the very first section is already on the first page). */
   newPage?: boolean;
+  /** Which section of the editor this is, set only when drawing a preview (`cleanForExport` with `anchors`), never saved. */
+  anchor?: number;
 }
 
 export interface DocContent {
@@ -62,6 +64,10 @@ export interface DocContent {
   subtitle?: string;
   /** Where the person's logo sits at the top of the first page; no logo when left out. */
   logo?: DocLogoPlace;
+  /** Page numbers at the foot of every page; on unless this is false. */
+  pageNumbers?: boolean;
+  /** A thin frame round every page; off unless this is true. */
+  border?: boolean;
   sections: DocSection[];
 }
 
@@ -175,7 +181,7 @@ export function normalizeDoc(raw: unknown, kind: DocKind): DocContent | null {
   const subtitle = text(d.subtitle, 300);
   const logo = oneOf(d.logo, LOGO_PLACES);
   const sections = (Array.isArray(d.sections) ? d.sections : []).slice(0, MAX_SECTIONS).map((s) => section(s, kind));
-  return { title: d.title.slice(0, 300), ...(subtitle ? { subtitle } : {}), ...(logo ? { logo } : {}), sections };
+  return { title: d.title.slice(0, 300), ...(subtitle ? { subtitle } : {}), ...(logo ? { logo } : {}), ...(d.pageNumbers === false ? { pageNumbers: false } : {}), ...(d.border === true ? { border: true } : {}), sections };
 }
 
 // ── Ready for the export ───────────────────────────────────────────────────────────────────────────
@@ -184,11 +190,11 @@ const filled = (list: string[] | undefined) => (list ?? []).map((s) => s.trim())
 
 /**
  * The document with every empty part taken out and every picture the person does not have left off (`knownImages`, when given), in the
- * shape the PDF and Word makers take. Sections with nothing left are dropped. Never null: a document with no title is "Untitled document".
+ * shape the PDF and Word makers take. Sections with nothing left are dropped (with `anchors`, the ones kept carry their editor number). Never null: a document with no title is "Untitled document".
  */
-export function cleanForExport(doc: DocContent, kind: DocKind, knownImages?: ReadonlySet<string>): DocContent {
+export function cleanForExport(doc: DocContent, kind: DocKind, knownImages?: ReadonlySet<string>, opts: { anchors?: boolean } = {}): DocContent {
   const sections: DocSection[] = [];
-  for (const s of doc.sections) {
+  for (const [index, s] of doc.sections.entries()) {
     const out: DocSection = {};
     if (s.heading?.trim()) out.heading = s.heading.trim();
     const paragraphs = filled(s.paragraphs);
@@ -216,9 +222,11 @@ export function cleanForExport(doc: DocContent, kind: DocKind, knownImages?: Rea
     }
     if (Object.keys(out).length === 0) continue;
     if (s.newPage) out.newPage = true;
+    // A preview keeps each section's own number, so the editor can find it even when empty sections before it are not drawn.
+    if (opts.anchors) out.anchor = index;
     sections.push(out);
   }
-  return { title: doc.title.trim() || "Untitled document", ...(doc.subtitle?.trim() ? { subtitle: doc.subtitle.trim() } : {}), ...(doc.logo ? { logo: doc.logo } : {}), sections };
+  return { title: doc.title.trim() || "Untitled document", ...(doc.subtitle?.trim() ? { subtitle: doc.subtitle.trim() } : {}), ...(doc.logo ? { logo: doc.logo } : {}), ...(doc.pageNumbers === false ? { pageNumbers: false } : {}), ...(doc.border ? { border: true } : {}), sections };
 }
 
 // ── Sections ───────────────────────────────────────────────────────────────────────────────────────

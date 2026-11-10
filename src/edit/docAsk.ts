@@ -127,3 +127,22 @@ export function parseDocumentReply(text: string, kind: DocKind, current: DocCont
   const sections = doc.sections.map((s) => withKnownPictures(s, allowedImages));
   return { ...doc, title: doc.title.trim() ? doc.title : current.title, ...(current.logo ? { logo: current.logo } : {}), sections };
 }
+
+const WHOLE_DOCUMENT = [
+  /\b(whole|entire|overall|complete)\s+(document|doc|file|pdf|report|letter|thing|text)\b/i,
+  /\b(every|all|each)\s+(the\s+)?sections?\b/i,
+  /\b(throughout|everywhere|across the (document|doc|file|report))\b/i,
+  /\b(document|doc|report|letter|file)('s)?\s+(title|subtitle)\b/i,
+  /\b(change|make|set|rename|update|edit)\b.{0,12}\b(the )?(title|subtitle)\b/i,
+  /\b(add|insert|create|write|put)\b.{0,24}\b(new |another |extra )?(section|chapter|page|appendix)\b/i,
+  /\b(add|insert|create|write|put)\b.{0,24}\b(summary|introduction|intro|conclusion|abstract|appendix)\b.{0,30}\b(top|start|beginning|end|bottom|first|last)\b/i,
+];
+
+/**
+ * True when a request is about the document as a whole rather than the section being looked at ("make the whole document more formal",
+ * "shorten every section", "change the title", "add a summary at the top"): the editor then asks for the whole document instead of one
+ * section. A guess from the words; choosing the document in the list always asks about the whole of it.
+ */
+export function wantsWholeDocument(prompt: string): boolean {
+  return WHOLE_DOCUMENT.some((re) => re.test(prompt));
+}

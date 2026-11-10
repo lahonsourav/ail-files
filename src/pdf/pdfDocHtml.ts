@@ -66,7 +66,7 @@ function renderPictures(pics: NonNullable<PdfSection["pictures"]>, pictures: Doc
   return out.join("");
 }
 
-function renderSection(section: PdfSection, isFirst: boolean, pictures?: DocPictureMap): string {
+function renderSection(section: PdfSection, isFirst: boolean, pictures?: DocPictureMap, anchor?: number): string {
   const parts: string[] = [];
   if (section.heading?.trim()) parts.push(`<h2>${renderTextWithMath(section.heading.trim())}</h2>`);
   for (const p of section.paragraphs ?? []) parts.push(`<p>${renderTextWithMath(p)}</p>`);
@@ -78,7 +78,8 @@ function renderSection(section: PdfSection, isFirst: boolean, pictures?: DocPict
   if (section.callout?.text) parts.push(renderCallout(section.callout));
   if (section.columns) parts.push(renderColumns(section.columns));
   const cls = section.newPage && !isFirst ? ' class="page-break"' : "";
-  return `<section${cls}>${parts.join("")}</section>`;
+  const attr = anchor === undefined ? "" : ` data-s="${anchor}"`;
+  return `<section${attr}${cls}>${parts.join("")}</section>`;
 }
 
 export interface RenderGeneralPdfHtmlOptions {
@@ -92,6 +93,8 @@ export interface RenderGeneralPdfHtmlOptions {
   border?: boolean;
   // The person's pictures by id, for the pictures and the logo a document names.
   pictures?: DocPictureMap;
+  // Tag each section with its number (`data-s`), so an editor showing this page can find a section and tell which one was clicked.
+  anchors?: boolean;
 }
 
 // General-purpose document renderer for the PDF Maker plugin/domain —
@@ -107,7 +110,7 @@ export interface RenderGeneralPdfHtmlOptions {
 export function renderGeneralPdfHtml(data: GeneralPdf, opts: RenderGeneralPdfHtmlOptions = {}): string {
   const titleHtml = renderTextWithMath(data.title);
   const subtitle = data.subtitle?.trim() ? `<p class="subtitle">${renderTextWithMath(data.subtitle.trim())}</p>` : "";
-  const sections = (data.sections ?? []).map((s, i) => renderSection(s, i === 0, opts.pictures)).join("");
+  const sections = (data.sections ?? []).map((s, i) => renderSection(s, i === 0, opts.pictures, opts.anchors ? (s.anchor ?? i) : undefined)).join("");
   const logoSrc = data.logo ? safePictureSrc(opts.pictures?.logo?.dataUrl) : null;
   const logo = logoSrc && data.logo ? `<div class="doc-logo" style="text-align:${data.logo}"><img src="${logoSrc}" alt="" /></div>` : "";
   const bodyClass = opts.border ? ' class="has-border"' : "";

@@ -175,3 +175,21 @@ describe("mergeDocs", () => {
     expect(merged?.sections).toHaveLength(4);
   });
 });
+
+describe("page settings", () => {
+  it("keeps page numbers off and the border on, and leaves the defaults out", () => {
+    const d = normalizeDoc({ title: "T", pageNumbers: false, border: true, sections: [] }, "pdf");
+    expect(d).toEqual({ title: "T", pageNumbers: false, border: true, sections: [] });
+    expect(normalizeDoc({ title: "T", pageNumbers: true, border: false, sections: [] }, "pdf")).toEqual({ title: "T", sections: [] });
+    expect(cleanForExport(d!, "pdf").border).toBe(true);
+    expect(cleanForExport(d!, "pdf").pageNumbers).toBe(false);
+  });
+});
+
+describe("anchors", () => {
+  it("keeps each section's own number when empty ones before it are left out", () => {
+    const d: DocContent = { title: "T", sections: [{ heading: "A" }, {}, { heading: "C" }] };
+    expect(cleanForExport(d, "pdf", undefined, { anchors: true }).sections.map((s) => s.anchor)).toEqual([0, 2]);
+    expect(cleanForExport(d, "pdf").sections.map((s) => s.anchor)).toEqual([undefined, undefined]);
+  });
+});

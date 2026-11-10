@@ -62,3 +62,9 @@ describe("parseDocumentReply", () => {
     expect(parseDocumentReply('{"document":{"title":"T","sections":[]}}', "pdf", { title: "Empty", sections: [] })?.sections).toEqual([]);
   });
 });
+
+import { wantsWholeDocument } from "../src/edit.js";
+describe("wantsWholeDocument", () => {
+  it.each(["make the whole document more formal", "shorten every section", "use British spelling throughout", "change the title to Annual Report", "rename the document title", "add a new section about costs", "add a summary at the top"])("is the whole document: %s", (p) => expect(wantsWholeDocument(p)).toBe(true));
+  it.each(["make it shorter", "make the second bullet clearer", "add a row to the table", "fix the typos", "add a summary line to this paragraph", "translate this to Hindi"])("is the section: %s", (p) => expect(wantsWholeDocument(p)).toBe(false));
+});

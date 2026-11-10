@@ -87,6 +87,15 @@ If you use Tailwind, add `@source "../node_modules/ail-files/dist/editor";` to y
 
 The editing code and the editor are tested here (`test/editor.test.ts` renders the whole editor from a stand-in host). Where each part lives, and the rules for changing it, are in [CONTRIBUTING.md](CONTRIBUTING.md#improve-the-editor).
 
+### The document editor (Word and PDF)
+
+The same package edits the Word and PDF documents the makers write. A document is a title, an optional subtitle and **sections** (a heading, paragraphs, pictures, bullets, a numbered list, a table, and in a PDF a chart, a callout and two columns), so one editor serves both file types.
+
+- **`ail-files/edit`** has the pure parts: `normalizeDoc`, `cleanForExport`, `addSection`, `moveSection`, `updateSection`, `newSection`, `mergeDocs` (two people editing the same document), `describeSectionChange` (a sentence to say aloud), and the ask prompts and reply checks (`sectionAskSystem`, `parseSectionReply`, `documentAskSystem`, `parseDocumentReply`, `wantsWholeDocument`).
+- **`ail-files/editor`** has `DocEditor`: the sections down the left, the page as the file will draw it (click a section to pick it), the picked section's fields on the right, the chat box and Talk (for the picked section, or the whole document), versions, undo and redo. Like `DeckEditor` it keeps no storage and no account; you give it a `DocEditorHost` (`preview`, `save`, `ask`, `askDocument`, `download`, and optionally `poll`, `versions`, `acknowledge`). The host's `preview` returns the PDF maker's own HTML: `renderGeneralPdfHtml(cleanForExport(doc, kind, undefined, { anchors: true }), { anchors: true })`.
+- `buildGeneralPdf` and `buildGeneralDocx` draw the person's pictures and logo when you pass `pictures: { img1: { dataUrl, width, height }, logo: {...} }`.
+- Try it: `npm run editor`, then open `/?doc=pdf` or `/?doc=docx`.
+
 ## Slide layouts
 
 Built in: `bullets`, `stat`, `comparison`, `quote`, `section`, `table`, `chart`, `grid`, `ranked`, `timeline`, `columns`, `problem_solution`, `team`, `iconlist`, `funnel`, `stats_row`, `process`, `recommendation`, `canvas`, `thank_you`, `presenter`, `hero`, `tiers`, `recap`, `glossary`, `roadmap`, `matrix`, `flowchart`, `calendar`, `gallery`, `quote_carousel`, `advanced_table`, `image`, `photos`, `before_after`.

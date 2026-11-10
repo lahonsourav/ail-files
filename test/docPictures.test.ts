@@ -57,3 +57,21 @@ describe("Word document with pictures", () => {
     expect(webp.includes(Buffer.from("word/media/"))).toBe(false);
   });
 });
+
+describe("anchors", () => {
+  it("tags sections with their number only when asked", () => {
+    const doc = { title: "T", sections: [{ heading: "A" }, { heading: "B", newPage: true }] };
+    expect(renderGeneralPdfHtml(doc)).not.toContain("data-s=");
+    const html = renderGeneralPdfHtml(doc, { anchors: true });
+    expect(html).toContain('<section data-s="0">');
+    expect(html).toContain('<section data-s="1" class="page-break">');
+  });
+});
+
+describe("anchored sections", () => {
+  it("uses the section's own number when it has one", () => {
+    const html = renderGeneralPdfHtml({ title: "T", sections: [{ heading: "A", anchor: 0 }, { heading: "C", anchor: 5 }] }, { anchors: true });
+    expect(html).toContain('<section data-s="5">');
+    expect(html).not.toContain('data-s="1"');
+  });
+});
