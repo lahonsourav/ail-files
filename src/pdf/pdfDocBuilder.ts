@@ -1,5 +1,6 @@
 import { renderGeneralPdfHtml } from "./pdfDocHtml.js";
 import { htmlToPdfBuffer } from "./htmlToPdf.js";
+import type { DocLogoPlace, DocPictureMap, DocPictureSize } from "./docPictures.js";
 
 // General-purpose document renderer for the PDF Maker plugin/domain —
 // distinct from lib/resumeBuilder.ts's fixed resume schema. Sections are a
@@ -44,9 +45,17 @@ export interface PdfColumns {
   right: PdfColumnBlock;
 }
 
+export interface PdfPicture {
+  // One of the person's pictures ("img1" to "img6"); drawn from the `pictures` option of the build.
+  image: string;
+  caption?: string;
+  size?: DocPictureSize;
+}
+
 export interface PdfSection {
   heading?: string;
   paragraphs?: string[];
+  pictures?: PdfPicture[];
   bullets?: string[];
   numbered?: string[];
   table?: PdfTable;
@@ -64,6 +73,8 @@ export interface PdfSection {
 export interface GeneralPdf {
   title: string;
   subtitle?: string; // e.g. a date, "Prepared for Acme Corp", a reference number
+  // Where the person's logo sits at the top of the first page. Set by the document editor; the logo's pixels come in as `pictures.logo`.
+  logo?: DocLogoPlace;
   sections?: PdfSection[];
 }
 
@@ -74,9 +85,11 @@ export interface BuildGeneralPdfOptions {
   // letter/report).
   pageNumbers?: boolean;
   border?: boolean;
+  // The person's pictures by id ("img1" to "img6", and "logo"), for the pictures and logo a document names.
+  pictures?: DocPictureMap;
 }
 
 export async function buildGeneralPdf(data: GeneralPdf, opts?: BuildGeneralPdfOptions): Promise<Uint8Array> {
-  const html = renderGeneralPdfHtml(data, { border: opts?.border === true });
+  const html = renderGeneralPdfHtml(data, { border: opts?.border === true, pictures: opts?.pictures });
   return htmlToPdfBuffer(html, { pageNumbers: opts?.pageNumbers !== false });
 }

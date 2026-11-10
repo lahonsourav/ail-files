@@ -1,8 +1,9 @@
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
   Table, TableRow, TableCell, WidthType, BorderStyle,
-  Footer, PageNumber, LevelFormat, PageBorderOffsetFrom,
+  Footer, PageNumber, LevelFormat, PageBorderOffsetFrom, ImageRun,
 } from "docx";
+import { fitPicture, parsePictureDataUrl, PICTURE_WIDTH_FRACTION, type DocLogoPlace, type DocPictureMap, type DocPictureSize } from "../pdf/docPictures.js";
 
 // General-purpose Word document renderer for the DOCX Maker plugin/domain —
 // same role as lib/pdfDocBuilder.ts's buildGeneralPdf, just a different
@@ -17,9 +18,17 @@ export interface DocxTable {
   rows: string[][];
 }
 
+export interface DocxPicture {
+  // One of the person's pictures ("img1" to "img6"); drawn from the `pictures` option of the build.
+  image: string;
+  caption?: string;
+  size?: DocPictureSize;
+}
+
 export interface DocxSection {
   heading?: string;
   paragraphs?: string[];
+  pictures?: DocxPicture[];
   bullets?: string[];
   numbered?: string[];
   table?: DocxTable;
@@ -32,6 +41,8 @@ export interface DocxSection {
 export interface GeneralDocx {
   title: string;
   subtitle?: string;
+  // Where the person's logo sits at the top of the first page (set by the document editor); its pixels come in as `pictures.logo`.
+  logo?: DocLogoPlace;
   sections?: DocxSection[];
 }
 
@@ -80,15 +91,38 @@ export interface BuildGeneralDocxOptions {
   // defaults on, border defaults off.
   pageNumbers?: boolean;
   border?: boolean;
+  // The person's pictures by id ("img1" to "img6", and "logo"), for the pictures and logo a document names.
+  pictures?: DocPictureMap;
+}
+
+// The text column of the page in pixels (A4 less one inch margins), and the tallest a picture may be.
+const COLUMN_PX = 600;
+const MAX_PICTURE_PX = 640;
+const LOGO_HEIGHT_PX = 48;
+
+/** A paragraph holding a picture, or null when it is not here or is a kind Word files cannot hold (WebP is turned into PNG before it gets here). */
+function pictureParagraph(pictures: DocPictureMap | undefined, id: string, fraction: number, alignment: (typeof AlignmentType)[keyof typeof AlignmentType], maxHeight = MAX_PICTURE_PX): Paragraph | null {
+  const data = pictures?.[id];
+  const parsed = data ? parsePictureDataUrl(data.dataUrl) : null;
+  if (!data || !parsed || parsed.type === "webp") return null;
+  const size = fitPicture(data.width, data.height, COLUMN_PX, fraction, maxHeight);
+  return new Paragraph({
+    alignment,
+    spacing: { before: 80, after: 80 },
+    children: [new ImageRun({ type: parsed.type, data: parsed.bytes, transformation: size, altText: { title: id, description: id, name: id } })],
+  });
 }
 
 export async function buildGeneralDocx(data: GeneralDocx, opts?: BuildGeneralDocxOptions): Promise<Buffer> {
   const showPageNumbers = opts?.pageNumbers !== false;
   const showBorder = opts?.border === true;
 
-  const children: (Paragraph | Table)[] = [
-    new Paragraph({ text: data.title, heading: HeadingLevel.TITLE }),
-  ];
+  const children: (Paragraph | Table)[] = [];
+  if (data.logo) {
+    const logo = pictureParagraph(opts?.pictures, "logo", 0.4, data.logo === "center" ? AlignmentType.CENTER : data.logo === "right" ? AlignmentType.RIGHT : AlignmentType.LEFT, LOGO_HEIGHT_PX);
+    if (logo) children.push(logo);
+  }
+  children.push(new Paragraph({ text: data.title, heading: HeadingLevel.TITLE }));
   if (data.subtitle?.trim()) {
     children.push(new Paragraph({ children: [new TextRun({ text: data.subtitle.trim(), italics: true, color: GRAY })] }));
   }
@@ -111,6 +145,13 @@ export async function buildGeneralDocx(data: GeneralDocx, opts?: BuildGeneralDoc
     }
     for (const p of section.paragraphs ?? []) {
       children.push(new Paragraph({ text: p, spacing: { after: 120 }, pageBreakBefore: consumeBreak() }));
+    }
+    for (const pic of section.pictures ?? []) {
+      const paragraph = pictureParagraph(opts?.pictures, pic.image, PICTURE_WIDTH_FRACTION[pic.size ?? "medium"], AlignmentType.CENTER);
+      if (!paragraph) continue; // a picture that is not here is left out
+      if (consumeBreak()) children.push(new Paragraph({ text: "", pageBreakBefore: true }));
+      children.push(paragraph);
+      if (pic.caption?.trim()) children.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text: pic.caption.trim(), italics: true, color: GRAY, size: 18 })] }));
     }
     for (const b of section.bullets ?? []) {
       children.push(new Paragraph({ text: b, bullet: { level: 0 }, spacing: { after: 60 }, pageBreakBefore: consumeBreak() }));
