@@ -148,6 +148,31 @@ export async function handle(req: IncomingMessage, res: ServerResponse, m: Modul
       return send(res, 200, { slide }), true;
     }
 
+    if (route === "POST /api/ask-cover") {
+      const body = await readJson(req);
+      const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+      if (!prompt || prompt.length > m.edit.MAX_ASK_CHARS) return send(res, 400, { error: `Say what to change, in up to ${m.edit.MAX_ASK_CHARS} characters.` }), true;
+      const key = process.env.ANTHROPIC_API_KEY;
+      if (!key) return send(res, 503, { error: "The playground has no model. Start it with ANTHROPIC_API_KEY set to try this box." }), true;
+      const images = ((body?.images as { id: string; label?: string; description?: string; width?: number; height?: number }[]) ?? []).map((i) => ({ id: i.id, label: i.label ?? i.id, description: i.description, width: Number(i.width) || 0, height: Number(i.height) || 0 }));
+      const answer = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({
+          model: process.env.PLAYGROUND_MODEL ?? "claude-sonnet-5-5",
+          max_tokens: 1500,
+          system: m.edit.coverAskSystem(),
+          messages: [{ role: "user", content: m.edit.coverAskUser({ prompt, cover: (body?.cover ?? {}) as never, images, total: Number(body?.total) || 1 }) }],
+        }),
+      });
+      if (!answer.ok) return send(res, 502, { error: "The model could not be reached. Check ANTHROPIC_API_KEY." }), true;
+      const data = (await answer.json()) as { content?: { type: string; text?: string }[] };
+      const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
+      const cover = m.edit.parseCoverReply(text, images.map((i) => i.id));
+      if (!cover) return send(res, 502, { error: "The answer wasn't usable. Try saying it another way." }), true;
+      return send(res, 200, { cover }), true;
+    }
+
     if (route === "POST /api/export") {
       const body = await readJson(req);
       const deck = m.browser.normalizeDeck(body?.deck, { editing: true });

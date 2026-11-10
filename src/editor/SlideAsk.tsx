@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { VoiceSession, browserRecognition, isStopCommand, narrateWhile, parseActionCommand, parseAnswer, parseNavCommand, primeSpeech, speak, splitTrailingNav, type ActionCommand, type NavCommand, type VoiceState } from "./voice.js";
+import { VoiceSession, browserRecognition, isStopCommand, narrateWhile, parseActionCommand, parseAnswer, parseNavCommand, primeSpeech, preferredVoiceName, setPreferredVoiceName, speak, splitTrailingNav, voiceChoices, type ActionCommand, type NavCommand, type VoiceState } from "./voice.js";
 import type { VoiceEvent } from "./host.js";
 import { usePhone } from "./usePhone.js";
 
@@ -28,6 +28,41 @@ const SUGGESTIONS: [string, string][] = [
 const WORKING_LINES = ["Okay, working on it.", "Still on it.", "Just a moment more.", "Nearly there."];
 
 const SPEAK_KEY = "ail-files:voice-speak";
+
+/** Which voice speaks the replies: the most natural one the browser has (automatic), or one the person picks. The list is whatever this device offers. */
+function VoicePicker({ lang }: { lang: string }) {
+  const [voices, setVoices] = useState<{ name: string; lang: string }[]>([]);
+  const [value, setValue] = useState("");
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const load = () => setVoices(voiceChoices(lang));
+    load();
+    setValue(preferredVoiceName());
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, [lang]);
+  if (voices.length < 2) return null;
+  return (
+    <label className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[var(--ds-text-secondary)]">
+      Voice
+      <select
+        aria-label="Voice for spoken replies"
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setPreferredVoiceName(e.target.value);
+          void speak("This is how I sound.", lang);
+        }}
+        className="min-w-0 flex-1 max-w-[16rem] text-[11px] max-sm:text-sm px-1.5 py-1 rounded-md bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] outline-none"
+      >
+        <option value="">Automatic (most natural)</option>
+        {voices.map((v) => (
+          <option key={v.name} value={v.name}>{v.name}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
 const HINT_KEY = "ail-files:voice-hint-seen";
 
 /** What a spoken command asks the editor to do, and what the editor answers: the words to say back, and whether it now waits for a yes or no. */
@@ -38,7 +73,7 @@ export interface VoiceCommandResult {
 }
 const noSubscribe = () => () => {};
 
-export default function SlideAsk({ onSend, busy, note, assistantName = "the assistant", slideKey, onVoicePhase, spokenReply, acknowledge, onCommand, track }: { onSend: (prompt: string, opts?: { voice?: boolean }) => Promise<string | null>; busy: boolean; note: { kind: "done" | "error"; text: string } | null; /** What the person is asking: "Ail", "the assistant". */ assistantName?: string; /** The slide being asked about: the typed text starts afresh when it changes, while talk mode carries on. */ slideKey?: unknown; /** Told whenever talk mode moves between its phases, so the editor can show the mark over the slide. */ onVoicePhase?: (phase: VoicePhase) => void; /** What to say aloud after a spoken request that worked ("Done. I changed the title."). Falls back to "Done." */ spokenReply?: () => string | undefined; /** A quick one-line spoken acknowledgement of the request ("Sure, making the title bigger."), asked for in parallel with the real work so the assistant can answer at once. Null or slow: a generic line is said instead. */ acknowledge?: (prompt: string) => Promise<string | null>; /** Carries out a spoken command that is not a request to the assistant ("next slide", "go back", "slide 3", "undo", "redo", "delete this slide") and says what to speak back. */ onCommand?: (command: VoiceCommand) => VoiceCommandResult; /** Told about talk mode events (started, blocked, in trouble), with no words from the person. */ track?: (event: VoiceEvent) => void }) {
+export default function SlideAsk({ subject = "slide", onSend, busy, note, assistantName = "the assistant", slideKey, onVoicePhase, spokenReply, acknowledge, onCommand, track }: { /** What is being changed, in the box's wording: "slide" (the default) or "cover". */ subject?: "slide" | "cover"; onSend: (prompt: string, opts?: { voice?: boolean }) => Promise<string | null>; busy: boolean; note: { kind: "done" | "error"; text: string } | null; /** What the person is asking: "Ail", "the assistant". */ assistantName?: string; /** The slide being asked about: the typed text starts afresh when it changes, while talk mode carries on. */ slideKey?: unknown; /** Told whenever talk mode moves between its phases, so the editor can show the mark over the slide. */ onVoicePhase?: (phase: VoicePhase) => void; /** What to say aloud after a spoken request that worked ("Done. I changed the title."). Falls back to "Done." */ spokenReply?: () => string | undefined; /** A quick one-line spoken acknowledgement of the request ("Sure, making the title bigger."), asked for in parallel with the real work so the assistant can answer at once. Null or slow: a generic line is said instead. */ acknowledge?: (prompt: string) => Promise<string | null>; /** Carries out a spoken command that is not a request to the assistant ("next slide", "go back", "slide 3", "undo", "redo", "delete this slide") and says what to speak back. */ onCommand?: (command: VoiceCommand) => VoiceCommandResult; /** Told about talk mode events (started, blocked, in trouble), with no words from the person. */ track?: (event: VoiceEvent) => void }) {
   const name = assistantName;
   const capitalName = name.charAt(0).toUpperCase() + name.slice(1);
   const [text, setText] = useState("");
@@ -235,7 +270,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
   );
 
   return (
-    <section aria-label={`Ask ${name} about this slide`} className="shrink-0 border-t border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] px-3 sm:px-4 pt-2.5 pb-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:z-30 max-sm:pt-2 max-sm:pb-[max(0.5rem,env(safe-area-inset-bottom))] max-sm:shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+    <section aria-label={`Ask ${name} about this ${subject}`} className="shrink-0 border-t border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] px-3 sm:px-4 pt-2.5 pb-3 max-sm:fixed max-sm:inset-x-0 max-sm:bottom-0 max-sm:z-30 max-sm:pt-2 max-sm:pb-[max(0.5rem,env(safe-area-inset-bottom))] max-sm:shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
       <div className="mx-auto w-full max-w-3xl space-y-1.5">
         {talking ? (
           // Talk mode: no typed text. The mark animates over the slide while it listens and works; this bar only says what is happening.
@@ -248,6 +283,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
               <p className="text-sm text-[var(--ds-text-secondary)]">
                 {busy ? `${capitalName} is on it. I will listen again when it is done.` : voice === "paused" ? "Paused." : "Listening. Just tell me what to change. Say \"stop\" to finish."}
               </p>
+              {speakBack && <VoicePicker lang={lang} />}
               {!hintSeen && !busy && <p className="mt-0.5 text-[11px] text-[var(--ds-text-muted)]">Try: &ldquo;Make the title shorter&rdquo;, &ldquo;Next slide&rdquo;, &ldquo;Undo&rdquo;, or both in one go: &ldquo;Make the title shorter, next slide&rdquo;.</p>}
             </div>
             <label className="shrink-0 inline-flex items-center gap-1.5 text-[11px] text-[var(--ds-text-secondary)] cursor-pointer">
@@ -270,7 +306,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
         ) : (
           <div className="flex items-end max-sm:items-center gap-2">
             <textarea
-              aria-label={`Ask ${name} to change this slide`}
+              aria-label={`Ask ${name} to change this ${subject}`}
               rows={2}
               title='For example: "Make it shorter", "Put my poster on the right", "Make the background dark blue"'
               value={text}
@@ -283,7 +319,7 @@ export default function SlideAsk({ onSend, busy, note, assistantName = "the assi
                   void send(text, true);
                 }
               }}
-              placeholder={phone ? "Change this slide…" : `Ask ${name} to change this slide`}
+              placeholder={phone ? `Change this ${subject}…` : `Ask ${name} to change this ${subject}`}
               className="flex-1 min-w-0 text-sm max-sm:text-base max-sm:h-10 max-sm:py-[7px] max-sm:leading-6 max-sm:overflow-hidden px-3 py-2 rounded-xl bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)] border border-[var(--ds-border-muted)] focus:border-[var(--ds-accent)] outline-none resize-none disabled:opacity-60"
             />
             {micButton}

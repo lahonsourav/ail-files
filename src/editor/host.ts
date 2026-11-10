@@ -1,3 +1,4 @@
+import type { CoverFields } from "../edit/coverAsk.js";
 import type { SlideContent, SlideDeck } from "../pptx/presentationBuilder.js";
 import type { RecordedDeck } from "../pptx/pptRecorded.js";
 
@@ -43,6 +44,16 @@ export interface AskArgs {
   fast?: boolean;
 }
 
+export interface AskCoverArgs {
+  prompt: string;
+  /** The cover as it is now (see `coverOf` in ail-files/edit). */
+  cover: CoverFields;
+  /** How many slides follow the cover. */
+  total: number;
+  images: { id: string; label: string; description?: string; width: number; height: number }[];
+  fast?: boolean;
+}
+
 /** What talk mode reports, with no words from the person: only what happened. A host can count these to see whether talking works. */
 export interface VoiceEvent {
   type: "talk_start" | "talk_request" | "talk_command" | "talk_blocked" | "talk_trouble" | "talk_undo_after" | "talk_limit";
@@ -77,6 +88,8 @@ export interface DeckEditorHost {
   onRemoteChange?(): void;
   /** The model's new version of one slide ("Ask about this slide"), or an error to show. See `slideAskSystem` and `parseSlideReply` in ail-files/edit. */
   ask(args: AskArgs): Promise<{ slide?: SlideContent; error?: string; /** The person has used up their allowed changes for now (the editor counts it). */ limited?: boolean }>;
+  /** Optional. The model's changes to the cover (the deck's title, subtitle, detail lines, colours, font style and background picture), as checked fields (see `coverAskSystem` and `parseCoverReply` in ail-files/edit). Leave out and the cover has no chat box. */
+  askCover?(args: AskCoverArgs): Promise<{ cover?: CoverFields; error?: string; limited?: boolean }>;
   /** Optional. Told what happened in talk mode (never what was said), for example to count how it is used. */
   track?(event: VoiceEvent): void;
   /** Optional. In talk mode, a quick one-line spoken acknowledgement of the request ("Sure, making the title bigger."), from a fast model, asked for at the same time as `ask`. Null (or slower than about a second) and a generic line is said instead. */

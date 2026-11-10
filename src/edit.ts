@@ -13,6 +13,7 @@ export * from "./edit/deckContext.js";
 export * from "./edit/recordedMove.js";
 export * from "./edit/slideToFreeForm.js";
 export * from "./edit/slideAsk.js";
+export * from "./edit/coverAsk.js";
 export * from "./edit/describeChange.js";
 export * from "./edit/slideOptionsEdit.js";
 export * from "./prompts/index.js";

@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import SlideStage from "./SlideStage.js";
 import SlideForm, { ElementPanel } from "./SlideForm.js";
 import SlideToolbar from "./SlideToolbar.js";
@@ -19,6 +20,7 @@ import { mergeDecks } from "../edit/deckMerge.js";
 import { moveDrawn } from "../edit/recordedMove.js";
 import { describeChange } from "../edit/describeChange.js";
 import { needsFreeForm } from "../edit/slideAsk.js";
+import { applyCover, coverOf } from "../edit/coverAsk.js";
 import SlideHandles, { type BoxRef } from "./SlideHandles.js";
 import ColorField from "./ColorField.js";
 import PictureSelect from "./PictureSelect.js";
@@ -114,6 +116,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const [missingPictures, setMissingPictures] = useState(false); // the last download stopped because pictures are not on this device
   const [versions, setVersions] = useState<{ id: string; version: number; createdAt: string }[] | null>(null);
   const phone = usePhone();
+  const rootRef = useRef<HTMLDivElement>(null); // the editor's own root: the phone's add-slide sheet is drawn here, outside the scrolling strip
   const pickedPanelRef = useRef<HTMLDivElement>(null); // the settings of the tapped part, above the slide on a phone
   const [addOpen, setAddOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null); // the "+ Add slide" menu at the end of the strip
@@ -493,7 +496,35 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
     setAskNote(problem ? { kind: "error", text: problem } : { kind: "done", text: "Editing is on for this slide. Drag its parts, or press Undo." });
     return problem;
   }
+  // The cover is not a slide: asking about it changes the deck's own title, subtitle, detail lines, colours, font style and background picture.
+  async function askCover(prompt: string, opts?: { voice?: boolean }): Promise<string | null> {
+    if (!host.askCover) return "Pick a slide first.";
+    const before = JSON.stringify(coverOf(latestDeck.current));
+    try {
+      const data = await host.askCover({
+        prompt,
+        cover: coverOf(latestDeck.current),
+        total: latestDeck.current.slides.length,
+        images: images.map((i) => ({ id: i.id, label: i.label, description: i.description, width: i.width, height: i.height })),
+        ...(opts?.voice ? { fast: true } : {}),
+      });
+      if (opts?.voice) {
+        track({ type: "talk_request", ok: !!data.cover });
+        if (data.limited) track({ type: "talk_limit" });
+      }
+      if (!data.cover) return data.error ?? "Couldn't change the cover. Try again.";
+      if (Object.keys(data.cover).length === 0) return "On the cover I can change the title, subtitle, details, colours, font and picture. Nothing was changed.";
+      if (JSON.stringify(coverOf(latestDeck.current)) !== before) return `The cover changed while ${assistantName} was working. Ask again.`;
+      spoken.current = "Done. I changed the cover.";
+      change(applyCover(latestDeck.current, data.cover), `deck.cover.ask.${Date.now()}`);
+      return null;
+    } catch {
+      if (opts?.voice) track({ type: "talk_request", ok: false });
+      return `Couldn't reach ${assistantName}. Check your connection and try again.`;
+    }
+  }
   async function askSlide(prompt: string, opts?: { voice?: boolean }): Promise<string | null> {
+    if (sel === "deck") return askCover(prompt, opts);
     if (typeof sel !== "number") return "Pick a slide first.";
     const index = sel;
     const original = deck.slides[index];
@@ -635,7 +666,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
   const shownSlide = recorded?.slides[(sel === "deck" ? 0 : sel + offset)];
 
   return (
-    <div className="min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
+    <div ref={rootRef} className="min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
       <header className={`${dim} flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shrink-0`}>
         {back}
         <h1 className="text-sm font-semibold truncate min-w-0 flex-1">{deck.title ?? "Untitled deck"}</h1>
@@ -785,13 +816,27 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
               <button type="button" onClick={() => setAddOpen((o) => !o)} aria-expanded={addOpen} className="w-24 lg:w-full max-sm:w-16 max-sm:px-1 max-sm:text-[11px] max-sm:leading-tight px-3 py-2 rounded-lg border border-dashed border-[var(--ds-border-muted)] text-xs font-medium text-[var(--ds-text-secondary)] hover:text-[var(--ds-text-primary)] hover:border-[var(--ds-accent)]">
                 + Add slide
               </button>
-              {addOpen && (
-                <div ref={addMenuRef} role="menu" className="absolute left-0 bottom-full lg:static lg:bottom-auto lg:w-full mt-1 z-20 w-52 max-sm:fixed max-sm:inset-x-3 max-sm:bottom-28 max-sm:left-3 max-sm:z-40 max-sm:w-auto max-sm:max-h-[50dvh] max-sm:overflow-y-auto max-sm:grid max-sm:grid-cols-2 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
+              {addOpen && !phone && (
+                <div ref={addMenuRef} role="menu" className="absolute left-0 bottom-full lg:static lg:bottom-auto lg:w-full mt-1 z-20 w-52 rounded-lg border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-lg p-1">
                   {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
-                    <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-2.5 py-1.5 max-sm:py-3 rounded-md hover:bg-[var(--ds-bg-hover)]">{t.label}</button>
+                    <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-2.5 py-1.5 rounded-md hover:bg-[var(--ds-bg-hover)]">{t.label}</button>
                   ))}
                 </div>
               )}
+              {/* On a phone the list is a sheet above the chat box, drawn in the editor's root (not inside the strip, which scrolls and clips),
+                  with a backdrop that closes it. */}
+              {addOpen && phone && rootRef.current &&
+                createPortal(
+                  <>
+                    <div aria-hidden="true" className="fixed inset-0 z-40 bg-black/20" onClick={() => setAddOpen(false)} />
+                    <div ref={addMenuRef} role="menu" aria-label="Add a slide" className="fixed inset-x-3 bottom-[calc(7rem+env(safe-area-inset-bottom))] z-50 grid grid-cols-2 gap-1 max-h-[55dvh] overflow-y-auto rounded-xl border border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shadow-xl p-1.5">
+                      {Object.entries(NEW_SLIDE_TEMPLATES).map(([layout, t]) => (
+                        <button key={layout} role="menuitem" type="button" onClick={() => add(layout)} className="w-full text-left text-sm px-3 py-3 rounded-lg hover:bg-[var(--ds-bg-hover)] active:bg-[var(--ds-bg-hover)]">{t.label}</button>
+                      ))}
+                    </div>
+                  </>,
+                  rootRef.current,
+                )}
             </div>
           </div>
         </aside>
@@ -834,8 +879,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
             </div>
           )}
           {typeof sel === "number" && (
-            <>
-              <div className={dim}>
+            <div className={dim}>
               <SlideInsert
                 key={`ins${sel}`}
                 slide={deck.slides[sel]}
@@ -844,9 +888,11 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
                 onUploadPicture={isEditor ? undefined : uploadPicture}
                 onPlaced={(index) => setPickedBox({ slide: sel, list: "pictures", index })}
               />
-              </div>
-              <SlideAsk slideKey={sel} onCommand={runCommand} track={track} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
-            </>
+            </div>
+          )}
+          {/* The chat box and Talk: on every slide, and on the cover when the host can change a cover. */}
+          {(typeof sel === "number" || (sel === "deck" && !!host.askCover)) && (
+            <SlideAsk subject={sel === "deck" ? "cover" : "slide"} slideKey={sel} onCommand={runCommand} track={track} acknowledge={host.acknowledge ? (p) => host.acknowledge!(p) : undefined} onVoicePhase={setVoicePhase} spokenReply={() => spoken.current} onSend={runAsk} busy={asking} note={askNote} assistantName={assistantName} />
           )}
         </section>
 
@@ -934,7 +980,7 @@ export default function DeckEditor({ initialDeck, initialVersion, host, pictures
       </main>
 
       {/* Room under the page for the chat box, which is fixed to the bottom of a phone screen. */}
-      {typeof sel === "number" && <div aria-hidden className="sm:hidden h-28 shrink-0" />}
+      {(typeof sel === "number" || (sel === "deck" && !!host.askCover)) && <div aria-hidden className="sm:hidden h-28 shrink-0" />}
 
       {dialogs}
 
