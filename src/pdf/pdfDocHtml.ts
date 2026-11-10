@@ -1,6 +1,7 @@
 import type { GeneralPdf, PdfCallout, PdfChart, PdfColumnBlock, PdfColumns, PdfSection, PdfTable } from "./pdfDocBuilder.js";
 import { renderBarChartSvg, renderPieChartSvg, renderPieLegend } from "./pdfDocCharts.js";
 import { escapeHtml, renderTextWithMath, getInlinedKatexCss } from "./pdfMath.js";
+import { safePictureSrc, type DocPictureMap } from "./docPictures.js";
 
 export { escapeHtml };
 
@@ -54,10 +55,22 @@ function renderColumns(columns: PdfColumns): string {
 // no prior page to break away from, and Chromium can otherwise render a
 // spurious blank leading page for a break-before on the first box in the
 // document.
-function renderSection(section: PdfSection, isFirst: boolean): string {
+function renderPictures(pics: NonNullable<PdfSection["pictures"]>, pictures: DocPictureMap | undefined): string {
+  const out: string[] = [];
+  for (const p of pics) {
+    const src = safePictureSrc(pictures?.[p.image]?.dataUrl);
+    if (!src) continue; // a picture that is not here is left out, never a broken box
+    const caption = p.caption?.trim() ? `<figcaption>${renderTextWithMath(p.caption.trim())}</figcaption>` : "";
+    out.push(`<figure class="pic pic-${p.size ?? "medium"}"><img src="${src}" alt="" />${caption}</figure>`);
+  }
+  return out.join("");
+}
+
+function renderSection(section: PdfSection, isFirst: boolean, pictures?: DocPictureMap, anchor?: number): string {
   const parts: string[] = [];
   if (section.heading?.trim()) parts.push(`<h2>${renderTextWithMath(section.heading.trim())}</h2>`);
   for (const p of section.paragraphs ?? []) parts.push(`<p>${renderTextWithMath(p)}</p>`);
+  if (section.pictures?.length) parts.push(renderPictures(section.pictures, pictures));
   if (section.bullets?.length) parts.push(`<ul>${section.bullets.map((b) => `<li>${renderTextWithMath(b)}</li>`).join("")}</ul>`);
   if (section.numbered?.length) parts.push(`<ol>${section.numbered.map((n) => `<li>${renderTextWithMath(n)}</li>`).join("")}</ol>`);
   if (section.table && section.table.rows.length > 0) parts.push(renderTable(section.table));
@@ -65,7 +78,8 @@ function renderSection(section: PdfSection, isFirst: boolean): string {
   if (section.callout?.text) parts.push(renderCallout(section.callout));
   if (section.columns) parts.push(renderColumns(section.columns));
   const cls = section.newPage && !isFirst ? ' class="page-break"' : "";
-  return `<section${cls}>${parts.join("")}</section>`;
+  const attr = anchor === undefined ? "" : ` data-s="${anchor}"`;
+  return `<section${attr}${cls}>${parts.join("")}</section>`;
 }
 
 export interface RenderGeneralPdfHtmlOptions {
@@ -77,6 +91,10 @@ export interface RenderGeneralPdfHtmlOptions {
   // numbers, by contrast, use Chromium's native footerTemplate and are
   // applied in lib/htmlToPdf.ts, not here.
   border?: boolean;
+  // The person's pictures by id, for the pictures and the logo a document names.
+  pictures?: DocPictureMap;
+  // Tag each section with its number (`data-s`), so an editor showing this page can find a section and tell which one was clicked.
+  anchors?: boolean;
 }
 
 // General-purpose document renderer for the PDF Maker plugin/domain —
@@ -92,7 +110,9 @@ export interface RenderGeneralPdfHtmlOptions {
 export function renderGeneralPdfHtml(data: GeneralPdf, opts: RenderGeneralPdfHtmlOptions = {}): string {
   const titleHtml = renderTextWithMath(data.title);
   const subtitle = data.subtitle?.trim() ? `<p class="subtitle">${renderTextWithMath(data.subtitle.trim())}</p>` : "";
-  const sections = (data.sections ?? []).map((s, i) => renderSection(s, i === 0)).join("");
+  const sections = (data.sections ?? []).map((s, i) => renderSection(s, i === 0, opts.pictures, opts.anchors ? (s.anchor ?? i) : undefined)).join("");
+  const logoSrc = data.logo ? safePictureSrc(opts.pictures?.logo?.dataUrl) : null;
+  const logo = logoSrc && data.logo ? `<div class="doc-logo" style="text-align:${data.logo}"><img src="${logoSrc}" alt="" /></div>` : "";
   const bodyClass = opts.border ? ' class="has-border"' : "";
   // KaTeX's CSS + inlined fonts (~1.6MB once base64-encoded, see
   // lib/pdfMath.ts) are only worth paying for on the documents that
@@ -156,6 +176,14 @@ export function renderGeneralPdfHtml(data: GeneralPdf, opts: RenderGeneralPdfHtm
     -webkit-box-decoration-break: clone;
   }
   .page-break { break-before: page; }
+  .doc-logo { margin: 0 0 10pt 0; }
+  .doc-logo img { max-height: 44pt; max-width: 40%; object-fit: contain; }
+  .pic { margin: 6pt auto 10pt auto; break-inside: avoid; text-align: center; }
+  .pic img { width: 100%; height: auto; max-height: 520pt; object-fit: contain; }
+  .pic-small { width: 30%; }
+  .pic-medium { width: 55%; }
+  .pic-large { width: 100%; }
+  .pic figcaption { font-size: 9pt; color: #666666; margin-top: 3pt; }
   .pdf-chart { margin: 6pt 0 10pt 0; break-inside: avoid; }
   .chart-title { font-size: 10.5pt; font-weight: bold; margin: 0 0 6pt 0; }
   .chart-pie-wrap { display: flex; align-items: center; gap: 16pt; flex-wrap: wrap; }
@@ -181,6 +209,7 @@ export function renderGeneralPdfHtml(data: GeneralPdf, opts: RenderGeneralPdfHtm
 ${katexStyle}
 </head>
 <body${bodyClass}>
+  ${logo}
   <h1 class="title">${titleHtml}</h1>
   ${subtitle}
   ${sections}

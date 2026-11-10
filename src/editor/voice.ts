@@ -225,7 +225,7 @@ export function parseNavCommand(text: string): NavCommand | null {
     .replace(/^((please|ok|okay|now) )+/, "")
     .replace(/( (please|now))+$/, "");
   const go = "(?:(?:go|move|jump|switch|turn|flip) (?:on )?(?:to |onto )?)?"; // "go to ", "move on to ", or nothing
-  const slide = "(?: (?:slide|page|one))?";
+  const slide = "(?: (?:slide|page|section|one))?";
   const the = "(?:the )?";
   // Hindi and Hinglish ("agli slide", "pichli slide", "pehli slide", "aakhri slide", and the same in Devanagari). Whole sentence only, like the English ones.
   const hiSlide = "(?: ?(?:slide|page|स्लाइड|पेज))?";
@@ -235,10 +235,10 @@ export function parseNavCommand(text: string): NavCommand | null {
   if (new RegExp(`^(?:aakhri|akhri|आखिरी|अंतिम)${hiSlide}(?: (?:par|pe) jao| dikhao|)$`).test(t)) return { to: "last" };
   const word = (w: string) => new RegExp(`^${go}${the}(?:${w})${slide}$`).test(t);
   if (word("next") || /^(go |move )?(on|forward|ahead)$/.test(t)) return { to: "next" };
-  if (word("previous|prev") || /^(go |move |turn |flip |jump )?(back|backward|backwards)( (one|a) (slide|page))?$/.test(t)) return { to: "previous" };
+  if (word("previous|prev") || /^(go |move |turn |flip |jump )?(back|backward|backwards)( (one|a) (slide|page|section))?$/.test(t)) return { to: "previous" };
   if (word("first|start|beginning")) return { to: "first" };
   if (word("last|final")) return { to: "last" };
-  const num = new RegExp(`^${go}(?:slide|page) (\\d{1,3}|${Object.keys(NUMBER_WORDS).join("|")})$`).exec(t);
+  const num = new RegExp(`^${go}(?:slide|page|section) (\\d{1,3}|${Object.keys(NUMBER_WORDS).join("|")})$`).exec(t);
   if (num) {
     const n = NUMBER_WORDS[num[1]] ?? Number(num[1]);
     if (n >= 1) return { to: "number", n };
@@ -264,7 +264,7 @@ export function parseActionCommand(text: string): ActionCommand | null {
   const t = plain(text);
   if (/^(undo|undo that|undo it|undo the last change|go back one step|step back|वापस करो|undo karo)$/.test(t)) return { to: "undo" };
   if (/^(redo|redo that|redo it|do it again|redo karo)$/.test(t)) return { to: "redo" };
-  if (/^(delete|remove) (this|the current|current) (slide|page)$/.test(t) || /^(delete|remove) (slide|page)$/.test(t) || /^(is slide ko |slide )?(delete|hatao|hata do) ?(karo|do)?$/.test(t)) return { to: "delete" };
+  if (/^(delete|remove) (this|the current|current) (slide|page|section)$/.test(t) || /^(delete|remove) (slide|page|section)$/.test(t) || /^(is slide ko |slide )?(delete|hatao|hata do) ?(karo|do)?$/.test(t)) return { to: "delete" };
   return null;
 }
 
@@ -301,7 +301,7 @@ export function splitTrailingNav(text: string): { request: string; nav: NavComma
     if (!firm && /^(?:back|backward|backwards|forward|ahead|on|move on|go on|move forward)$/i.test(tail.replace(/\s+(?:please|now)$/i, ""))) continue;
     return { request: head, nav };
   }
-  const bare = /^(.{4,}?)\s+((?:(?:go|move|jump) to )?(?:the )?next (?:slide|page)(?: please)?)$/i.exec(raw);
+  const bare = /^(.{4,}?)\s+((?:(?:go|move|jump) to )?(?:the )?next (?:slide|page|section)(?: please)?)$/i.exec(raw);
   if (bare && !/\b(in|on|to|of|for|at|from|after|before|and|with|into|by)$/i.test(bare[1].trim())) {
     const nav = parseNavCommand(bare[2]);
     if (nav) return { request: bare[1].trim(), nav };

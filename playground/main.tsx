@@ -1,6 +1,7 @@
 import { StrictMode, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { DeckEditor, PressEffect, barButtonClass, type DeckEditorHost, type EditorPicture } from "../src/editor.js";
+import { DeckEditor, DocEditor, PressEffect, barButtonClass, type DeckEditorHost, type DocEditorHost, type EditorPicture } from "../src/editor.js";
+import type { DocContent, DocKind } from "../src/edit.js";
 import { imageIdsInDeck, IMAGE_LIMITS, type SlideDeck } from "../src/browser.js";
 import "./styles.css";
 
@@ -155,8 +156,76 @@ function App() {
   );
 }
 
+// The document editor (Word and PDF) is the same page with `?doc=pdf` or `?doc=docx`.
+function DocApp({ kind }: { kind: DocKind }) {
+  const [loaded, setLoaded] = useState<{ version: number; doc: DocContent } | null>(null);
+  const [pictures] = useState<EditorPicture[]>([]);
+  useEffect(() => {
+    void (async () => setLoaded((await (await fetch(`/api/doc?kind=${kind}`)).json()) as { version: number; doc: DocContent }))();
+  }, [kind]);
+  const q = `?kind=${kind}`;
+  const host = useMemo<DocEditorHost>(
+    () => ({
+      async preview({ doc }) {
+        const res = await post(`/api/doc/preview${q}`, { doc });
+        return res.ok ? ((await res.json()) as { html: string }) : null;
+      },
+      async save(doc, baseVersion) {
+        const res = await fetch(`/api/doc${q}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ doc, baseVersion }) });
+        if (res.ok) return { status: "saved", version: ((await res.json()) as { version: number }).version };
+        if (res.status === 409) return { status: "conflict", ...((await res.json()) as { version: number; doc: DocContent }) };
+        return { status: "error", message: ((await res.json().catch(() => null)) as { error?: string } | null)?.error };
+      },
+      async poll(since) {
+        const data = (await (await fetch(`/api/doc${q}&since=${since}`, { cache: "no-store" })).json()) as { unchanged?: boolean; version: number; doc?: DocContent };
+        return data.unchanged || !data.doc ? null : { version: data.version, doc: data.doc };
+      },
+      async ask(args) {
+        const res = await post(`/api/doc/ask${q}`, args);
+        return (await res.json().catch(() => ({}))) as { section?: never; error?: string };
+      },
+      async askDocument(args) {
+        const res = await post(`/api/doc/ask-document${q}`, args);
+        return (await res.json().catch(() => ({}))) as { doc?: never; error?: string };
+      },
+      async download({ doc }) {
+        const res = await post(`/api/doc/export${q}`, { doc });
+        if (!res.ok) return { ok: false, error: ((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? "Couldn't make the file." };
+        return { ok: true, blob: await res.blob(), filename: kind === "pdf" ? "document.pdf" : "document.docx" };
+      },
+      versions: {
+        async list() {
+          const res = await fetch(`/api/doc/snapshots${q}`);
+          return res.ok ? ((await res.json()) as { snapshots: { id: string; version: number; createdAt: string }[] }).snapshots : null;
+        },
+        async restore(id) {
+          const res = await post(`/api/doc/snapshots${q}`, { snapshotId: id });
+          return res.ok ? ((await res.json()) as { version: number; doc: DocContent }) : null;
+        },
+      },
+    }),
+    [kind, q]
+  );
+  if (!loaded) return <p className="p-6 text-sm">Starting the editor…</p>;
+  return (
+    <>
+      <PressEffect />
+      <DocEditor
+        kind={kind}
+        initialDoc={loaded.doc}
+        initialVersion={loaded.version}
+        host={host}
+        pictures={pictures}
+        hasLogo={false}
+        back={<span className={`${barButtonClass} !px-0 font-semibold`}>ail-files playground</span>}
+        notice={<p className="px-4 py-1.5 text-[11px] text-[var(--ds-text-muted)] border-b border-[var(--ds-border-muted)]">Changes are kept in memory on this machine. Set ANTHROPIC_API_KEY to try the chat box and Talk. Pictures and the logo are not part of the playground.</p>}
+        labels={{ assistantName: "the model" }}
+      />
+    </>
+  );
+}
+
+const docParam = new URLSearchParams(location.search).get("doc");
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
+  <StrictMode>{docParam === "pdf" || docParam === "docx" ? <DocApp kind={docParam} /> : <App />}</StrictMode>
 );

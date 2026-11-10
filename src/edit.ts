@@ -17,3 +17,6 @@ export * from "./edit/coverAsk.js";
 export * from "./edit/describeChange.js";
 export * from "./edit/slideOptionsEdit.js";
 export * from "./prompts/index.js";
+export * from "./edit/docEdit.js";
+export * from "./edit/docAsk.js";
+export * from "./edit/docContext.js";

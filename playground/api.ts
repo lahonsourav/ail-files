@@ -20,6 +20,17 @@ export interface Store {
   snapshots: { id: string; version: number; createdAt: string; deck: unknown }[];
 }
 
+/** The document editor's store (`?doc=pdf` or `?doc=docx` on the page): one document per file type. */
+export interface DocStore {
+  version: number;
+  doc: unknown;
+  snapshots: { id: string; version: number; createdAt: string; doc: unknown }[];
+}
+
+export function createDocStore(initial: unknown): DocStore {
+  return { version: 1, doc: initial, snapshots: [] };
+}
+
 const MAX_SNAPSHOTS = 20;
 const SNAPSHOT_EVERY_MS = 10_000;
 const MAX_BODY = 40_000_000;
@@ -62,11 +73,96 @@ function imageRefs(m: Modules, raw: unknown) {
 }
 
 /** Handles one request for `/api/...`. Returns false when the path is not one of ours. */
-export async function handle(req: IncomingMessage, res: ServerResponse, m: Modules, store: Store): Promise<boolean> {
+export async function handle(req: IncomingMessage, res: ServerResponse, m: Modules, store: Store, docs: Record<"pdf" | "docx", DocStore>): Promise<boolean> {
   const url = new URL(req.url ?? "/", "http://localhost");
   if (!url.pathname.startsWith("/api/")) return false;
   const route = `${req.method} ${url.pathname}`;
   try {
+
+    // ── The document editor (Word and PDF) ────────────────────────────────────────────────────────
+    if (url.pathname.startsWith("/api/doc")) {
+      const kind = url.searchParams.get("kind") === "docx" ? "docx" : "pdf";
+      const d = docs[kind];
+      if (route === "GET /api/doc") {
+        const since = Number(url.searchParams.get("since"));
+        if (url.searchParams.has("since") && since === d.version) return send(res, 200, { unchanged: true, version: d.version }), true;
+        return send(res, 200, { version: d.version, doc: d.doc }), true;
+      }
+      if (route === "PUT /api/doc") {
+        const body = await readJson(req);
+        const doc = m.edit.normalizeDoc(body?.doc, kind);
+        if (!doc) return send(res, 400, { error: "That document can't be read." }), true;
+        if (body?.baseVersion !== d.version) return send(res, 409, { version: d.version, doc: d.doc }), true;
+        const last = d.snapshots[d.snapshots.length - 1];
+        if (!last || Date.now() - new Date(last.createdAt).getTime() > SNAPSHOT_EVERY_MS) {
+          d.snapshots.push({ id: `s${d.version}`, version: d.version, createdAt: new Date().toISOString(), doc: d.doc });
+          if (d.snapshots.length > MAX_SNAPSHOTS) d.snapshots.shift();
+        }
+        d.doc = doc;
+        d.version += 1;
+        return send(res, 200, { version: d.version }), true;
+      }
+      if (route === "GET /api/doc/snapshots") return send(res, 200, { snapshots: d.snapshots.map(({ id, version, createdAt }) => ({ id, version, createdAt })).reverse() }), true;
+      if (route === "POST /api/doc/snapshots") {
+        const body = await readJson(req);
+        const snap = d.snapshots.find((x) => x.id === body?.snapshotId);
+        if (!snap) return send(res, 404, { error: "No such version." }), true;
+        d.doc = snap.doc;
+        d.version += 1;
+        return send(res, 200, { version: d.version, doc: d.doc }), true;
+      }
+      if (route === "POST /api/doc/preview") {
+        const body = await readJson(req);
+        const doc = m.edit.normalizeDoc(body?.doc, kind);
+        if (!doc) return send(res, 400, { error: "That document can't be drawn." }), true;
+        const clean = m.edit.cleanForExport(doc, kind, undefined, { anchors: true });
+        // The page the PDF maker draws, with each section tagged so the editor can find it. The playground keeps pictures in the browser, so it has none to draw.
+        const html = m.engine.renderGeneralPdfHtml(clean as never, { border: clean.border === true, anchors: true });
+        return send(res, 200, { html }), true;
+      }
+      if (route === "POST /api/doc/ask" || route === "POST /api/doc/ask-document") {
+        const body = await readJson(req);
+        const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+        if (!prompt || prompt.length > m.edit.MAX_DOC_ASK_CHARS) return send(res, 400, { error: `Say what to change, in up to ${m.edit.MAX_DOC_ASK_CHARS} characters.` }), true;
+        const key = process.env.ANTHROPIC_API_KEY;
+        if (!key) return send(res, 503, { error: "The playground has no model. Start it with ANTHROPIC_API_KEY set to try this box." }), true;
+        const images = ((body?.images as { id: string; label?: string; description?: string; width?: number; height?: number }[]) ?? []).map((i) => ({ id: i.id, label: i.label ?? i.id, description: i.description, width: Number(i.width) || 0, height: Number(i.height) || 0 }));
+        const whole = route.endsWith("ask-document");
+        const current = m.edit.normalizeDoc(body?.doc, kind);
+        if (!current) return send(res, 400, { error: "That document can't be read." }), true;
+        const answer = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: process.env.PLAYGROUND_MODEL ?? "claude-sonnet-5-5",
+            max_tokens: whole ? 8000 : 3000,
+            system: whole ? m.edit.documentAskSystem(kind) : m.edit.sectionAskSystem(kind),
+            messages: [{ role: "user", content: whole ? m.edit.documentAskUser({ prompt, doc: current, images }) : m.edit.sectionAskUser({ prompt, section: (body?.section ?? {}) as never, doc: current, index: Number(body?.index) || 0, images }) }],
+          }),
+        });
+        if (!answer.ok) return send(res, 502, { error: "The model could not be reached. Check ANTHROPIC_API_KEY." }), true;
+        const data = (await answer.json()) as { content?: { type: string; text?: string }[] };
+        const text = (data.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
+        if (whole) {
+          const next = m.edit.parseDocumentReply(text, kind, current, images.map((i) => i.id));
+          return next ? send(res, 200, { doc: next }) : send(res, 502, { error: "The answer wasn't a usable document. Try saying it another way." }), true;
+        }
+        const section = m.edit.parseSectionReply(text, kind, images.map((i) => i.id));
+        return section ? send(res, 200, { section }) : send(res, 502, { error: "The answer wasn't a usable section. Try saying it another way." }), true;
+      }
+      if (route === "POST /api/doc/export") {
+        const body = await readJson(req);
+        const doc = m.edit.normalizeDoc(body?.doc, kind);
+        if (!doc) return send(res, 400, { error: "That document can't be made into a file." }), true;
+        const clean = m.edit.cleanForExport(doc, kind);
+        const bytes = kind === "pdf" ? await m.engine.buildGeneralPdf(clean as never, { pageNumbers: clean.pageNumbers !== false, border: clean.border === true }) : await m.engine.buildGeneralDocx(clean as never, { pageNumbers: clean.pageNumbers !== false, border: clean.border === true });
+        res.statusCode = 200;
+        res.setHeader("Content-Type", kind === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        res.end(Buffer.from(bytes));
+        return true;
+      }
+    }
+
     if (route === "GET /api/deck") {
       const since = Number(url.searchParams.get("since"));
       if (url.searchParams.has("since") && since === store.version) return send(res, 200, { unchanged: true, version: store.version }), true;
