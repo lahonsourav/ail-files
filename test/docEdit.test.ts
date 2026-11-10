@@ -193,3 +193,32 @@ describe("anchors", () => {
     expect(cleanForExport(d, "pdf").sections.map((s) => s.anchor)).toEqual([undefined, undefined]);
   });
 });
+
+import { editedDocNote, hasDocReply } from "../src/edit.js";
+describe("editedDocNote", () => {
+  const messages = [
+    { id: "m1", role: "assistant", content: "Here:\n```pdf_doc\n{}\n```" },
+    { id: "m2", role: "user", content: "ok" },
+  ];
+  const edited = [{ sourceMessageId: "m1", doc: { title: "T", sections: [{ heading: "Edited", paragraphs: ["a", ""], pictures: [{ image: "img1" }] }, {}] } as DocContent }];
+
+  it("gives the model the edited document for the latest reply, without empty parts or pictures", () => {
+    const note = editedDocNote("pdf", messages, edited);
+    expect(note).toContain("```pdf_doc");
+    expect(note).toContain('"heading":"Edited"');
+    expect(note).not.toContain("img1");
+    expect(note).not.toContain('""');
+    expect(note).toContain("PDF document");
+  });
+
+  it("says nothing when the latest reply was not edited, or is another kind", () => {
+    expect(editedDocNote("pdf", messages, [])).toBe("");
+    expect(editedDocNote("docx", messages, edited)).toBe("");
+    expect(editedDocNote("pdf", [...messages, { id: "m3", role: "assistant", content: "```pdf_doc\n{}\n```" }], edited)).toBe("");
+  });
+
+  it("knows which conversations hold a document", () => {
+    expect(hasDocReply("pdf", messages)).toBe(true);
+    expect(hasDocReply("docx", messages)).toBe(false);
+  });
+});
