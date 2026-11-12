@@ -203,3 +203,22 @@ describe("renderGeneralPdfHtml", () => {
     expect(html).toContain("$y^2$");
   });
 });
+
+describe("renderGeneralPdfHtml page frame", () => {
+  const html = (layout: Record<string, string>) => renderGeneralPdfHtml({ title: "T", ...layout, sections: [{ heading: "H", paragraphs: ["p"] }] }, { border: true });
+
+  it("draws the frame as it always did when nothing is set", () => {
+    expect(html({})).toContain("border: 1pt solid #bfbfbf;");
+    expect(html({})).toContain("padding: 18pt;");
+  });
+
+  it("follows the style, thickness, colour and gap that are set", () => {
+    const out = html({ borderStyle: "dashed", borderWeight: "thick", borderColor: "blue", borderGap: "large" });
+    expect(out).toContain("border: 2.5pt dashed #2563eb;");
+    expect(out).toContain("padding: 30pt;");
+  });
+
+  it("makes a double frame thick enough to show both lines", () => {
+    expect(html({ borderStyle: "double" })).toContain("border: 3pt double #bfbfbf;");
+  });
+});

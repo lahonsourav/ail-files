@@ -1,6 +1,7 @@
 import { renderGeneralPdfHtml } from "./pdfDocHtml.js";
 import { htmlToPdfBuffer } from "./htmlToPdf.js";
 import type { DocLogoPlace, DocPictureMap, DocPictureSize } from "./docPictures.js";
+import { pdfPageMetrics, type DocPageLayout } from "./docPage.js";
 
 // General-purpose document renderer for the PDF Maker plugin/domain —
 // distinct from lib/resumeBuilder.ts's fixed resume schema. Sections are a
@@ -72,7 +73,7 @@ export interface PdfSection {
   anchor?: number;
 }
 
-export interface GeneralPdf {
+export interface GeneralPdf extends DocPageLayout {
   title: string;
   subtitle?: string; // e.g. a date, "Prepared for Acme Corp", a reference number
   // Where the person's logo sits at the top of the first page. Set by the document editor; the logo's pixels come in as `pictures.logo`.
@@ -93,5 +94,6 @@ export interface BuildGeneralPdfOptions {
 
 export async function buildGeneralPdf(data: GeneralPdf, opts?: BuildGeneralPdfOptions): Promise<Uint8Array> {
   const html = renderGeneralPdfHtml(data, { border: opts?.border === true, pictures: opts?.pictures });
-  return htmlToPdfBuffer(html, { pageNumbers: opts?.pageNumbers !== false });
+  const m = pdfPageMetrics(data);
+  return htmlToPdfBuffer(html, { pageNumbers: opts?.pageNumbers !== false, marginPt: m.marginPt, numberAlign: m.numberAlign, numberFormat: m.numberFormat });
 }

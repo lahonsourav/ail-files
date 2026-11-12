@@ -1,4 +1,4 @@
-import { cleanForExport, docOutline, normalizeDoc, type DocContent, type DocKind, type DocSection } from "./docEdit.js";
+import { PAGE_SETTING_KEYS, cleanForExport, docOutline, normalizeDoc, pageSettingsOf, type DocContent, type DocKind, type DocSection } from "./docEdit.js";
 
 // "Ask" in the document editor: the person says what to change, in the box or by voice, and the model writes the new version of ONE
 // section, or of the whole document, which the editor puts in as one step they can undo. These are the prompts and the checks on the
@@ -125,7 +125,10 @@ export function parseDocumentReply(text: string, kind: DocKind, current: DocCont
   if (!doc) return null;
   if (current.sections.length > 0 && cleanForExport(doc, kind).sections.length === 0) return null;
   const sections = doc.sections.map((s) => withKnownPictures(s, allowedImages));
-  return { ...doc, title: doc.title.trim() ? doc.title : current.title, ...(current.logo ? { logo: current.logo } : {}), sections };
+  // The page settings (page numbers, frame, margin) and the logo place are the person's own: a reply never changes them.
+  const rest: Record<string, unknown> = { ...doc };
+  for (const key of PAGE_SETTING_KEYS) delete rest[key];
+  return { ...(rest as unknown as DocContent), title: doc.title.trim() ? doc.title : current.title, ...(current.logo ? { logo: current.logo } : {}), ...pageSettingsOf(current), sections };
 }
 
 const WHOLE_DOCUMENT = [

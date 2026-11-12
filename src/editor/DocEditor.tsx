@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import DocPage from "./DocPage.js";
+import { LAYOUT_DEFAULTS, LAYOUT_LABELS, LAYOUT_OPTIONS, PAGE_LAYOUT_KEYS } from "../pdf/docPage.js";
 import DocSectionForm from "./DocSectionForm.js";
 import SlideAsk, { type VoiceCommand, type VoiceCommandResult, type VoicePhase } from "./SlideAsk.js";
 import SuccessTick from "./SuccessTick.js";
@@ -13,7 +14,7 @@ import type { NavCommand } from "./voice.js";
 import { canRedo, canUndo, commit, createHistory, redo, undo } from "../edit/deckEdit.js";
 import {
   addSection, deleteSection, describeDocChange, describeSectionChange, duplicateSection, LOGO_PLACES, mergeDocs, moveSection, newSection, sectionLabel,
-  sectionSummary, sectionTemplates, updateSection, type DocContent, type DocKind, type DocLogoPlace, type DocSection,
+  PAGE_SETTING_KEYS, pageSettingsOf, sectionSummary, sectionTemplates, updateSection, type DocContent, type DocKind, type DocLogoPlace, type DocSection,
 } from "../edit/docEdit.js";
 import { wantsWholeDocument } from "../edit/docAsk.js";
 import { saveBlob, type EditorPicture, type VoiceEvent } from "./host.js";
@@ -112,6 +113,9 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
   const phone = usePhone();
   const rootRef = useRef<HTMLDivElement>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // On a phone or tablet the page and the section's fields do not fit side by side: one at a time, the page scrolling inside its own area
+  // (the header, the tools and the section strip stay where they are), and this says which.
+  const [smallView, setSmallView] = useState<"page" | "fields">("page");
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -314,6 +318,16 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
     delete next[field];
     change(next, `doc.${key}`);
   };
+  // One of the page settings with a fixed set of choices: a drop-down showing the document's choice (or the default), which leaves the field
+  // out again when the default is picked, so a document that never touched these is saved exactly as before.
+  const layoutSelect = (key: (typeof PAGE_LAYOUT_KEYS)[number], label: string) => (
+    <label className="block space-y-1">
+      <span className="text-xs font-medium text-[var(--ds-text-secondary)]">{label}</span>
+      <select aria-label={label} value={doc[key] ?? LAYOUT_DEFAULTS[key]} onChange={(e) => (e.target.value === LAYOUT_DEFAULTS[key] ? dropDocField(key, key) : setDocField({ [key]: e.target.value } as Partial<DocContent>, key))} className={inputClass}>
+        {LAYOUT_OPTIONS[key].map((v) => <option key={v} value={v}>{(LAYOUT_LABELS[key] as Record<string, string>)[v]}</option>)}
+      </select>
+    </label>
+  );
 
   async function uploadPicture(file: File): Promise<{ id: string } | { error: string }> {
     const r = await onAddPicture?.(file);
@@ -351,7 +365,9 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
       if (!data.doc) return data.error ?? "Couldn't change the document. Try again.";
       if (latestDoc.current !== original) return `The document changed while ${assistantName} was working. Ask again.`;
       // The page settings and the logo place are the person's own; a reply never moves them.
-      const next: DocContent = { ...data.doc, ...(original.logo ? { logo: original.logo } : {}), ...(original.pageNumbers === false ? { pageNumbers: false } : {}), ...(original.border ? { border: true } : {}) };
+      const replyRest: Record<string, unknown> = { ...data.doc };
+      for (const key of PAGE_SETTING_KEYS) delete replyRest[key];
+      const next: DocContent = { ...(replyRest as unknown as DocContent), ...(original.logo ? { logo: original.logo } : {}), ...pageSettingsOf(original) };
       spoken.current = describeDocChange(original, next);
       change(next, `doc.ask.${Date.now()}`);
       setSelected((s) => (typeof s === "number" ? Math.min(s, Math.max(0, next.sections.length - 1)) : s));
@@ -475,7 +491,7 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
   const section = typeof sel === "number" ? doc.sections[sel] : undefined;
 
   return (
-    <div ref={rootRef} className="min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
+    <div ref={rootRef} className="h-dvh min-h-0 overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
       <header className={`${dim} flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shrink-0`}>
         {back}
         <h1 className="text-sm font-semibold truncate min-w-0 flex-1">{doc.title || `Untitled ${fileName === "PDF" ? "PDF" : "document"}`}</h1>
@@ -521,7 +537,7 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
 
       <main className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-[230px_minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)]">
         {/* Sections */}
-        <aside aria-label="Sections" className={`${dim} lg:border-r border-[var(--ds-border-muted)] lg:overflow-y-auto bg-[var(--ds-bg-surface)]`}>
+        <aside aria-label="Sections" className={`${dim} max-lg:shrink-0 lg:border-r border-[var(--ds-border-muted)] lg:overflow-y-auto bg-[var(--ds-bg-surface)]`}>
           <div
             ref={strip}
             onDragEnter={(e) => dragFrom !== null && e.preventDefault()}
@@ -608,11 +624,20 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
           </div>
         </aside>
 
+        {/* Phone and tablet: the page or the section's fields, one at a time. */}
+        <div role="tablist" aria-label="What to show" className={`${dim} lg:hidden shrink-0 flex gap-1 p-1.5 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)]`}>
+          {(["page", "fields"] as const).map((v) => (
+            <button key={v} type="button" role="tab" aria-selected={smallView === v} onClick={() => setSmallView(v)} className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${smallView === v ? "bg-[var(--ds-bg-elevated)] text-[var(--ds-text-primary)]" : "text-[var(--ds-text-muted)]"}`}>
+              {v === "page" ? "Page" : sel === "doc" ? "Title and settings" : "Edit section"}
+            </button>
+          ))}
+        </div>
+
         {/* The page */}
-        <section aria-label="Page preview" className="min-w-0 min-h-0 flex flex-col">
-          <div data-doc-scroll className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 bg-[var(--ds-bg-elevated)]">
+        <section aria-label="Page preview" className={`min-w-0 min-h-0 flex flex-col max-lg:order-last ${smallView === "page" ? "max-lg:flex-1" : ""}`}>
+          <div data-doc-scroll className={`flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 bg-[var(--ds-bg-elevated)] ${smallView === "fields" ? "max-lg:hidden" : ""}`}>
             <div className="mx-auto w-full max-w-[794px] relative">
-              {html !== null ? <DocPage html={html} selected={sel} onSelect={setSelected} flash={flash} /> : <div className="aspect-[210/297] rounded-sm bg-[var(--ds-bg-surface)] flex items-center justify-center text-xs text-[var(--ds-text-muted)]">Drawing your page…</div>}
+              {html !== null ? <DocPage html={html} selected={sel} onSelect={setSelected} flash={flash} layout={doc} pageNumbers={doc.pageNumbers !== false} /> : <div className="aspect-[210/297] rounded-sm bg-[var(--ds-bg-surface)] flex items-center justify-center text-xs text-[var(--ds-text-muted)]">Drawing your page…</div>}
               {(asking || voicePhase === "hearing" || voicePhase === "speaking") && (
                 <div className={`absolute inset-0 z-20 flex flex-col items-center justify-start pt-24 gap-3 ${asking ? "bg-[var(--ds-bg-primary)]/60" : "bg-[var(--ds-bg-primary)]/35"}`} aria-live="polite">
                   <div className="relative flex items-center justify-center">
@@ -647,7 +672,7 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
         </section>
 
         {/* The fields */}
-        <aside aria-label="Section fields" className={`${dim} lg:border-l border-[var(--ds-border-muted)] min-h-0 flex flex-col bg-[var(--ds-bg-surface)]`}>
+        <aside aria-label="Section fields" className={`${dim} lg:border-l border-[var(--ds-border-muted)] min-h-0 flex flex-col bg-[var(--ds-bg-surface)] max-lg:flex-1 ${smallView === "page" ? "max-lg:hidden" : ""}`}>
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
             {sel === "doc" || !section ? (
               <div className="space-y-3">
@@ -662,8 +687,18 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
                   </select>
                   {!hasLogo && <span className="block text-[11px] text-[var(--ds-text-muted)]">Add a logo in the chat's picture settings to place it here.</span>}
                 </label>
-                <label className="flex items-center gap-2 text-xs text-[var(--ds-text-secondary)] cursor-pointer"><input type="checkbox" checked={doc.pageNumbers !== false} onChange={(e) => (e.target.checked ? dropDocField("pageNumbers", "pageNumbers") : setDocField({ pageNumbers: false }, "pageNumbers"))} />Page numbers</label>
-                <label className="flex items-center gap-2 text-xs text-[var(--ds-text-secondary)] cursor-pointer"><input type="checkbox" checked={doc.border === true} onChange={(e) => (e.target.checked ? setDocField({ border: true }, "border") : dropDocField("border", "border"))} />A border round every page</label>
+                <fieldset className="space-y-3 rounded-lg border border-[var(--ds-border-muted)] p-3">
+                  <legend className="px-1 text-xs font-semibold text-[var(--ds-text-secondary)]">Page</legend>
+                  {layoutSelect("pageMargin", "Page margin")}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-xs text-[var(--ds-text-secondary)] cursor-pointer"><input type="checkbox" checked={doc.pageNumbers !== false} onChange={(e) => (e.target.checked ? dropDocField("pageNumbers", "pageNumbers") : setDocField({ pageNumbers: false }, "pageNumbers"))} />Page numbers</label>
+                    {doc.pageNumbers !== false && <div className="grid grid-cols-2 gap-2">{layoutSelect("pageNumberPosition", "Number place")}{layoutSelect("pageNumberFormat", "Number looks like")}</div>}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-xs text-[var(--ds-text-secondary)] cursor-pointer"><input type="checkbox" checked={doc.border === true} onChange={(e) => (e.target.checked ? setDocField({ border: true }, "border") : dropDocField("border", "border"))} />A border round every page</label>
+                    {doc.border === true && <div className="grid grid-cols-2 gap-2">{layoutSelect("borderStyle", "Border line")}{layoutSelect("borderWeight", "Thickness")}{layoutSelect("borderColor", "Colour")}{layoutSelect("borderGap", "Gap to the text")}</div>}
+                  </div>
+                </fieldset>
                 <p className="text-[11px] text-[var(--ds-text-muted)]">Asking from here changes the whole document: its title, its sections and their order.</p>
                 {doc.sections.length === 0 && <p className="text-xs text-[var(--ds-text-secondary)]">This document has no sections yet. Press &ldquo;+ Add section&rdquo;, or ask for one in the box below.</p>}
               </div>

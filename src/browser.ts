@@ -10,6 +10,7 @@
 // Every type, so a browser program can describe a deck, a document or a recording without the builders (types leave no code behind).
 export type * from "./pptx/presentationBuilder.js";
 export type * from "./pdf/pdfDocBuilder.js";
+export * from "./pdf/docPage.js";
 export type * from "./docx/docxDocBuilder.js";
 export type * from "./xlsx/excelBuilder.js";
 export type { ExtractedSlideDeck } from "./pptx/slideDeck.js";
