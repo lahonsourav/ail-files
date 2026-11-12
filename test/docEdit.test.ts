@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addSection, blankDoc, cleanForExport, deleteSection, describeDocChange, describeSectionChange, docOutline, duplicateSection, mergeDocs,
-  moveSection, newSection, normalizeDoc, sectionLabel, sectionSummary, sectionTemplates, updateSection, MAX_SECTIONS, type DocContent,
+  moveSection, newSection, normalizeDoc, PAGE_SETTING_KEYS, pageSettingsOf, sectionLabel, sectionSummary, sectionTemplates, updateSection, MAX_SECTIONS, type DocContent,
 } from "../src/edit.js";
 
 const doc: DocContent = {
@@ -183,6 +183,37 @@ describe("page settings", () => {
     expect(normalizeDoc({ title: "T", pageNumbers: true, border: false, sections: [] }, "pdf")).toEqual({ title: "T", sections: [] });
     expect(cleanForExport(d!, "pdf").border).toBe(true);
     expect(cleanForExport(d!, "pdf").pageNumbers).toBe(false);
+  });
+});
+
+describe("page layout settings", () => {
+  const withLayout = { title: "T", border: true, pageMargin: "wide", borderStyle: "double", borderWeight: "thick", borderColor: "blue", borderGap: "large", pageNumberPosition: "right", pageNumberFormat: "number", sections: [] };
+
+  it("keeps the margin, frame and page number choices, drops anything that is not one, and leaves defaults out", () => {
+    const d = normalizeDoc(withLayout, "pdf");
+    expect(d).toEqual(withLayout);
+    expect(normalizeDoc({ title: "T", pageMargin: "huge", borderColor: "pink", borderStyle: "solid", sections: [] }, "pdf")).toEqual({ title: "T", sections: [] });
+  });
+
+  it("carries them into the export, for both kinds", () => {
+    for (const kind of ["pdf", "docx"] as const) expect(cleanForExport(normalizeDoc(withLayout, kind)!, kind)).toMatchObject({ pageMargin: "wide", borderStyle: "double", pageNumberFormat: "number" });
+  });
+
+  it("gathers every page setting in one place, for keeping them when the rest is replaced", () => {
+    expect(pageSettingsOf(normalizeDoc(withLayout, "pdf")!)).toEqual({ border: true, pageMargin: "wide", borderStyle: "double", borderWeight: "thick", borderColor: "blue", borderGap: "large", pageNumberPosition: "right", pageNumberFormat: "number" });
+    expect(pageSettingsOf({ title: "T", pageNumbers: false, sections: [] })).toEqual({ pageNumbers: false });
+    expect(PAGE_SETTING_KEYS).toContain("pageMargin");
+  });
+
+  it("merges two people's changes to different page settings, and refuses two different values for the same one", () => {
+    const base: DocContent = { title: "T", sections: [] };
+    expect(mergeDocs(base, { ...base, pageMargin: "wide" }, { ...base, borderColor: "red" })).toMatchObject({ pageMargin: "wide", borderColor: "red" });
+    expect(mergeDocs(base, { ...base, pageMargin: "wide" }, { ...base, pageMargin: "narrow" })).toBeNull();
+  });
+
+  it("says so when only the page settings changed", () => {
+    const before: DocContent = { title: "T", sections: [] };
+    expect(describeDocChange(before, { ...before, border: true })).toContain("page settings");
   });
 });
 

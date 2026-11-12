@@ -2,6 +2,7 @@ import type { GeneralPdf, PdfCallout, PdfChart, PdfColumnBlock, PdfColumns, PdfS
 import { renderBarChartSvg, renderPieChartSvg, renderPieLegend } from "./pdfDocCharts.js";
 import { escapeHtml, renderTextWithMath, getInlinedKatexCss } from "./pdfMath.js";
 import { safePictureSrc, type DocPictureMap } from "./docPictures.js";
+import { pdfPageMetrics, type DocPageLayout } from "./docPage.js";
 
 export { escapeHtml };
 
@@ -108,6 +109,7 @@ export interface RenderGeneralPdfHtmlOptions {
 // which escapes everything except any $...$/$$...$$ math it renders via
 // KaTeX, so the same escaping guarantee still holds for non-math text.
 export function renderGeneralPdfHtml(data: GeneralPdf, opts: RenderGeneralPdfHtmlOptions = {}): string {
+  const metrics = pdfPageMetrics(data);
   const titleHtml = renderTextWithMath(data.title);
   const subtitle = data.subtitle?.trim() ? `<p class="subtitle">${renderTextWithMath(data.subtitle.trim())}</p>` : "";
   const sections = (data.sections ?? []).map((s, i) => renderSection(s, i === 0, opts.pictures, opts.anchors ? (s.anchor ?? i) : undefined)).join("");
@@ -170,8 +172,8 @@ export function renderGeneralPdfHtml(data: GeneralPdf, opts: RenderGeneralPdfHtm
      padding is the inside gap (border to text) — with no page-specific
      positioning math required. */
   body.has-border {
-    border: 1pt solid #bfbfbf;
-    padding: 18pt;
+    border: ${metrics.borderWidthPt}pt ${metrics.borderStyle} ${metrics.borderColor};
+    padding: ${metrics.gapPt}pt;
     box-decoration-break: clone;
     -webkit-box-decoration-break: clone;
   }

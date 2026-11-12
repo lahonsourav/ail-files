@@ -3,6 +3,7 @@ import {
   Table, TableRow, TableCell, WidthType, BorderStyle,
   Footer, PageNumber, LevelFormat, PageBorderOffsetFrom, ImageRun,
 } from "docx";
+import { docxPageMetrics, type DocPageLayout } from "../pdf/docPage.js";
 import { fitPicture, parsePictureDataUrl, PICTURE_WIDTH_FRACTION, type DocLogoPlace, type DocPictureMap, type DocPictureSize } from "../pdf/docPictures.js";
 
 // General-purpose Word document renderer for the DOCX Maker plugin/domain —
@@ -38,7 +39,7 @@ export interface DocxSection {
   newPage?: boolean;
 }
 
-export interface GeneralDocx {
+export interface GeneralDocx extends DocPageLayout {
   title: string;
   subtitle?: string;
   // Where the person's logo sits at the top of the first page (set by the document editor); its pixels come in as `pictures.logo`.
@@ -48,7 +49,7 @@ export interface GeneralDocx {
 
 const NUMBERING_REFERENCE = "general-docx-numbered-list";
 const GRAY = "666666";
-const BORDER_GRAY = "AAAAAA";
+const BORDER_GRAY = "AAAAAA"; // table lines
 
 // Page-border geometry: a real, explicit page margin plus offsetFrom:PAGE
 // (border measured from the physical page edge, not Word's own default of
@@ -58,8 +59,8 @@ const BORDER_GRAY = "AAAAAA";
 // the page-edge-to-text distance, and BORDER_SPACE_PT is how far inside
 // that the border itself sits, leaving (margin - space) = 48pt as the
 // real gap between the border and the text on every side.
-const PAGE_MARGIN_TWIPS = 1440;
-const BORDER_SPACE_PT = 24;
+// (The margin, and how far the border sits from the paper's edge, now come from the document's page settings: see docxPageMetrics in
+// ../pdf/docPage.ts. The text stays one inch from the edge and the frame 24 pt from it unless the settings say otherwise.)
 
 function buildTable(table: DocxTable): Table {
   const colCount = table.headers?.length ?? table.rows[0]?.length ?? 0;
@@ -116,6 +117,9 @@ function pictureParagraph(pictures: DocPictureMap | undefined, id: string, fract
 export async function buildGeneralDocx(data: GeneralDocx, opts?: BuildGeneralDocxOptions): Promise<Buffer> {
   const showPageNumbers = opts?.pageNumbers !== false;
   const showBorder = opts?.border === true;
+  const metrics = docxPageMetrics(data);
+  const frameStyle = metrics.borderStyle === "double" ? BorderStyle.DOUBLE : metrics.borderStyle === "dashed" ? BorderStyle.DASHED : BorderStyle.SINGLE;
+  const frame = { style: frameStyle, size: metrics.borderSize, color: metrics.borderColor, space: metrics.borderFromEdgePt };
 
   const children: (Paragraph | Table)[] = [];
   if (data.logo) {
@@ -178,27 +182,33 @@ export async function buildGeneralDocx(data: GeneralDocx, opts?: BuildGeneralDoc
     sections: [
       {
         properties: {
-          page: showBorder
-            ? {
-                margin: { top: PAGE_MARGIN_TWIPS, bottom: PAGE_MARGIN_TWIPS, left: PAGE_MARGIN_TWIPS, right: PAGE_MARGIN_TWIPS },
-                borders: {
-                  pageBorders: { offsetFrom: PageBorderOffsetFrom.PAGE },
-                  pageBorderTop: { style: BorderStyle.SINGLE, size: 4, color: BORDER_GRAY, space: BORDER_SPACE_PT },
-                  pageBorderBottom: { style: BorderStyle.SINGLE, size: 4, color: BORDER_GRAY, space: BORDER_SPACE_PT },
-                  pageBorderLeft: { style: BorderStyle.SINGLE, size: 4, color: BORDER_GRAY, space: BORDER_SPACE_PT },
-                  pageBorderRight: { style: BorderStyle.SINGLE, size: 4, color: BORDER_GRAY, space: BORDER_SPACE_PT },
-                },
-              }
-            : undefined,
+          page: {
+            margin: { top: metrics.marginTwips, bottom: metrics.marginTwips, left: metrics.marginTwips, right: metrics.marginTwips },
+            ...(showBorder
+              ? {
+                  borders: {
+                    pageBorders: { offsetFrom: PageBorderOffsetFrom.PAGE },
+                    pageBorderTop: frame,
+                    pageBorderBottom: frame,
+                    pageBorderLeft: frame,
+                    pageBorderRight: frame,
+                  },
+                }
+              : {}),
+          },
         },
         footers: showPageNumbers
           ? {
               default: new Footer({
                 children: [
                   new Paragraph({
-                    alignment: AlignmentType.CENTER,
+                    alignment: metrics.numberAlign === "left" ? AlignmentType.LEFT : metrics.numberAlign === "right" ? AlignmentType.RIGHT : AlignmentType.CENTER,
                     children: [
-                      new TextRun({ children: ["Page ", PageNumber.CURRENT, " of ", PageNumber.TOTAL_PAGES], color: GRAY, size: 18 }),
+                      new TextRun({
+                        children: metrics.numberFormat === "number" ? [PageNumber.CURRENT] : metrics.numberFormat === "page" ? ["Page ", PageNumber.CURRENT] : ["Page ", PageNumber.CURRENT, " of ", PageNumber.TOTAL_PAGES],
+                        color: GRAY,
+                        size: 18,
+                      }),
                     ],
                   }),
                 ],

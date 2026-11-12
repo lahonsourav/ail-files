@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import JSZip from "jszip";
 import { renderGeneralPdfHtml } from "../src/pdf/pdfDocHtml.js";
 import { buildGeneralDocx } from "../src/docx/docxDocBuilder.js";
 import { fitPicture, parsePictureDataUrl, safePictureSrc } from "../src/pdf/docPictures.js";
@@ -55,6 +56,45 @@ describe("Word document with pictures", () => {
     expect(without.includes(Buffer.from("word/media/"))).toBe(false);
     const webp = await buildGeneralDocx({ title: "T", sections: [{ pictures: [{ image: "img1" }] }] }, { pictures: { img1: { dataUrl: "data:image/webp;base64,AAAA", width: 1, height: 1 } } });
     expect(webp.includes(Buffer.from("word/media/"))).toBe(false);
+  });
+});
+
+describe("Word document page settings", () => {
+  const xmlOf = async (layout: Record<string, unknown>, opts: { border?: boolean; pageNumbers?: boolean } = {}) => {
+    const buf = await buildGeneralDocx({ title: "T", ...layout, sections: [{ heading: "H", paragraphs: ["p"] }] } as never, opts);
+    const zip = await JSZip.loadAsync(buf);
+    const document = await zip.file("word/document.xml")!.async("string");
+    const footers = await Promise.all(Object.keys(zip.files).filter((f) => /word\/footer\d*\.xml/.test(f)).map((f) => zip.file(f)!.async("string")));
+    return { document, footer: footers.join("") };
+  };
+
+  it("sets the margin, and the frame's style, thickness, colour and distance from the edge", async () => {
+    const { document } = await xmlOf({ pageMargin: "narrow", borderStyle: "double", borderWeight: "thick", borderColor: "red", borderGap: "small" }, { border: true });
+    expect(document).toContain('w:left="720"');
+    expect(document).toMatch(/<w:pgBorders[^>]*w:offsetFrom="page"/);
+    const top = /<w:top ([^>]*)\/>/.exec(document)![1];
+    expect(top).toContain('w:val="double"');
+    expect(top).toContain('w:sz="20"');
+    expect(top).toContain('w:space="31"');
+    expect(top).toContain('w:color="DC2626"');
+  });
+
+  it("is the same page as before when nothing is set: one inch margin, a single thin frame 24 pt from the edge", async () => {
+    const { document } = await xmlOf({}, { border: true });
+    expect(document).toContain('w:left="1440"');
+    const top = /<w:top ([^>]*)\/>/.exec(document)![1];
+    expect(top).toContain('w:val="single"');
+    expect(top).toContain('w:space="24"');
+  });
+
+  it("puts the page number where and how it is asked for", async () => {
+    const right = await xmlOf({ pageNumberPosition: "right", pageNumberFormat: "number" });
+    expect(right.footer).toContain('w:jc w:val="right"');
+    expect(right.footer).not.toContain("Page ");
+    const def = await xmlOf({});
+    expect(def.footer).toContain('w:jc w:val="center"');
+    expect(def.footer).toContain("Page ");
+    expect(def.footer).toContain(" of ");
   });
 });
 

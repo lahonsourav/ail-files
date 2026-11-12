@@ -41,6 +41,16 @@ describe("parseSectionReply", () => {
   });
 });
 
+describe("parseDocumentReply and the page settings", () => {
+  it("never lets a reply change the person's page settings, and keeps theirs", () => {
+    const current: DocContent = { ...doc, border: true, pageMargin: "wide", pageNumberFormat: "number" };
+    const got = parseDocumentReply('{"document":{"title":"Report","pageNumbers":false,"border":false,"pageMargin":"narrow","borderColor":"red","sections":[{"heading":"Only"}]}}', "pdf", current);
+    expect(got).toMatchObject({ border: true, pageMargin: "wide", pageNumberFormat: "number" });
+    expect(got?.pageNumbers).toBeUndefined();
+    expect(got?.borderColor).toBeUndefined();
+  });
+});
+
 describe("parseDocumentReply", () => {
   it("reads the document and keeps the logo setting", () => {
     const got = parseDocumentReply('{"document":{"title":"Report 2","sections":[{"heading":"Only"}]}}', "pdf", doc);

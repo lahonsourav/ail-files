@@ -5,17 +5,29 @@
 // left alone at the foot of a sheet, a "new page" section starts a sheet, and a part taller than a whole sheet gets a taller sheet
 // instead of being cut. It is close to what the printer does, not identical (the printer can also cut inside a paragraph).
 
+import { pageNumberText, type NumberFormat, type NumberPosition } from "../pdf/docPage.js";
+
 export const PAGE_PX = 794; // A4 at 96 dpi
 export const PAGE_HEIGHT = 1123;
-export const PAGE_PADDING_PT = 50;
-const PAD_PX = (PAGE_PADDING_PT * 96) / 72;
+
+/** The margins of a sheet in pixels and how its page number looks (see previewGeometry in ../pdf/docPage.ts). */
+export interface SheetGeometry {
+  top: number;
+  bottom: number;
+  side: number;
+  showNumbers: boolean;
+  numberAlign: NumberPosition;
+  numberFormat: NumberFormat;
+}
+
 /** The height a sheet's content may use. */
-export const CONTENT_HEIGHT = PAGE_HEIGHT - 2 * PAD_PX;
+export const contentHeight = (g: Pick<SheetGeometry, "top" | "bottom">) => PAGE_HEIGHT - g.top - g.bottom;
 
 const listLike = (el: Element) => el.tagName === "UL" || el.tagName === "OL";
 
 /** Puts `source`'s children onto sheets inside `pagesEl`, and returns how many sheets there are. `source` is emptied. */
-export function paginate(pagesEl: HTMLElement, source: HTMLElement, bodyClass: string): number {
+export function paginate(pagesEl: HTMLElement, source: HTMLElement, bodyClass: string, geometry: SheetGeometry): number {
+  const CONTENT_HEIGHT = contentHeight(geometry);
   const doc = pagesEl.ownerDocument;
   pagesEl.textContent = "";
   let page!: HTMLElement;
@@ -142,6 +154,20 @@ export function paginate(pagesEl: HTMLElement, source: HTMLElement, bodyClass: s
     }
     for (const block of blocks) addBlock(el, block);
     part = null;
+  }
+  // The frame of every sheet but the last runs the full height of the page, since the document goes on over it; the last one ends with the text,
+  // as in the PDF (the printer clones the frame onto each page of the document, and the last page's piece is only as tall as what is on it).
+  (pagesEl.lastElementChild?.querySelector(".page") as HTMLElement | null)?.style.setProperty("min-height", "0");
+  // The page number, where the PDF puts it: in the bottom margin, below the frame. (Without numbers the editor's own "Page 2" label stays.)
+  if (geometry.showNumbers) {
+    const wraps = Array.from(pagesEl.children) as HTMLElement[];
+    wraps.forEach((wrap, i) => {
+      wrap.querySelector(".pageno")?.remove();
+      const n = doc.createElement("div");
+      n.className = `pnum pnum-${geometry.numberAlign}`;
+      n.textContent = pageNumberText(geometry.numberFormat, i + 1, wraps.length);
+      wrap.querySelector(".sheet")?.appendChild(n);
+    });
   }
   return count;
 }

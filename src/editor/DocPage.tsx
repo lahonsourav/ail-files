@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { CONTENT_HEIGHT, PAGE_HEIGHT, PAGE_PADDING_PT, PAGE_PX, paginate } from "./docPaginate.js";
+import { PAGE_HEIGHT, PAGE_PX, contentHeight, paginate } from "./docPaginate.js";
+import { previewGeometry, type DocPageLayout } from "../pdf/docPage.js";
 
 // The page of a document as the file will draw it, shown in the editor. The host sends the PDF maker's own HTML (`data-s` on each section);
 // it is drawn inside a shadow root, so its styles cannot touch the editor's, and replaced in place when it changes, so the page does not
@@ -13,8 +14,10 @@ const SHEET_CSS = `
 :host { display: block; }
 .pages { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .sheet-wrap { display: flex; flex-direction: column; gap: 6px; margin-bottom: 30px; }
-.sheet { width: ${PAGE_PX}px; min-height: ${PAGE_HEIGHT}px; box-sizing: border-box; padding: ${PAGE_PADDING_PT}pt; background: #fff; color: #1a1a1a; box-shadow: 0 1px 3px rgba(0,0,0,.18), 0 8px 24px rgba(0,0,0,.08); cursor: default; }
-.sheet .page { display: flow-root; min-height: ${CONTENT_HEIGHT}px; margin: 0; }
+.sheet { position: relative; width: ${PAGE_PX}px; min-height: ${PAGE_HEIGHT}px; box-sizing: border-box; padding: var(--mt) var(--ms) var(--mb); background: #fff; color: #1a1a1a; box-shadow: 0 1px 3px rgba(0,0,0,.18), 0 8px 24px rgba(0,0,0,.08); cursor: default; }
+.sheet .page { display: flow-root; min-height: var(--content); margin: 0; }
+.pnum { position: absolute; bottom: calc(var(--mb) / 2 - 7px); left: var(--ms); right: var(--ms); font: 8.5pt "DejaVu Sans", "Liberation Sans", Arial, sans-serif; color: #666; }
+.pnum-left { text-align: left; } .pnum-center { text-align: center; } .pnum-right { text-align: right; }
 .pageno { font: 11px/1 sans-serif; color: #8a8a8a; text-align: center; width: ${PAGE_PX}px; }
 section[data-s] { cursor: pointer; border-radius: 3px; transition: background-color .15s, outline-color .15s; outline: 2px solid transparent; outline-offset: 8px; }
 section[data-s]:hover { background-color: rgba(37, 99, 235, .05); }
@@ -46,12 +49,15 @@ function markPicked(root: ShadowRoot, selected: number | "doc"): HTMLElement | n
   return found[0] ?? null;
 }
 
-export default function DocPage({ html, selected, onSelect, flash = false }: { html: string; selected: number | "doc"; onSelect: (target: number | "doc") => void; flash?: boolean }) {
+export default function DocPage({ html, selected, onSelect, flash = false, layout = {}, pageNumbers = true }: { html: string; selected: number | "doc"; onSelect: (target: number | "doc") => void; flash?: boolean; layout?: DocPageLayout; pageNumbers?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const shadow = useRef<ShadowRoot | null>(null);
   const outer = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const [height, setHeight] = useState(PAGE_HEIGHT);
+  // The sheet's margins and page number, from the document's page settings; the sheets are cut again when any of them changes.
+  const geometry = previewGeometry(layout, pageNumbers);
+  const geometryKey = JSON.stringify(geometry);
   const onSelectRef = useRef(onSelect);
   const selectedRef = useRef(selected);
   useEffect(() => {
@@ -69,6 +75,11 @@ export default function DocPage({ html, selected, onSelect, flash = false }: { h
     root.innerHTML = `<style>${css}</style><style>${SHEET_CSS}</style><div class="pages"></div>`;
     const pagesEl = root.querySelector(".pages") as HTMLElement | null;
     if (!pagesEl) return;
+    const geo = JSON.parse(geometryKey) as ReturnType<typeof previewGeometry>;
+    pagesEl.style.setProperty("--mt", `${geo.top}px`);
+    pagesEl.style.setProperty("--mb", `${geo.bottom}px`);
+    pagesEl.style.setProperty("--ms", `${geo.side}px`);
+    pagesEl.style.setProperty("--content", `${contentHeight(geo)}px`);
     // The page as the HTML draws it, in one piece, kept aside: it is cut into sheets, and cut again if a picture loads and changes a height.
     const source = document.createElement("div");
     source.innerHTML = body;
@@ -78,7 +89,7 @@ export default function DocPage({ html, selected, onSelect, flash = false }: { h
     let alive = true;
     const lay = () => {
       const copy = source.cloneNode(true) as HTMLElement;
-      paginate(pagesEl, copy, bodyClass);
+      paginate(pagesEl, copy, bodyClass, geo);
       markPicked(root, selectedRef.current);
       cuts++;
       // A picture that was not ready changes the height once it is: cut again (twice at most, so it can never loop).
@@ -103,7 +114,7 @@ export default function DocPage({ html, selected, onSelect, flash = false }: { h
       root.removeEventListener("click", click);
       ro.disconnect();
     };
-  }, [html]);
+  }, [html, geometryKey]);
 
   // Mark the picked section, and bring it into view when it is off screen.
   useLayoutEffect(() => {

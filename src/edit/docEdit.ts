@@ -1,4 +1,5 @@
 import { moveWithin } from "./deckEdit.js";
+import { PAGE_LAYOUT_KEYS, normalizeLayout, type DocPageLayout } from "../pdf/docPage.js";
 
 // Pure helpers for the document editor (Word and PDF): a document as the editor holds it, changing it without mutating it, adding and
 // moving sections, starting a section from a template, a check that keeps what the person typed (empty fields included), the three
@@ -59,15 +60,16 @@ export interface DocSection {
   anchor?: number;
 }
 
-export interface DocContent {
+export interface DocContent extends DocPageLayout {
   title: string;
   subtitle?: string;
   /** Where the person's logo sits at the top of the first page; no logo when left out. */
   logo?: DocLogoPlace;
   /** Page numbers at the foot of every page; on unless this is false. */
   pageNumbers?: boolean;
-  /** A thin frame round every page; off unless this is true. */
+  /** A frame round every page; off unless this is true. Its style, thickness, colour and distance from the text are `borderStyle`, `borderWeight`, `borderColor` and `borderGap`. */
   border?: boolean;
+  // The rest of the page settings (`pageMargin`, `pageNumberPosition`, `pageNumberFormat`, and the frame's four) come from DocPageLayout.
   sections: DocSection[];
 }
 
@@ -181,7 +183,7 @@ export function normalizeDoc(raw: unknown, kind: DocKind): DocContent | null {
   const subtitle = text(d.subtitle, 300);
   const logo = oneOf(d.logo, LOGO_PLACES);
   const sections = (Array.isArray(d.sections) ? d.sections : []).slice(0, MAX_SECTIONS).map((s) => section(s, kind));
-  return { title: d.title.slice(0, 300), ...(subtitle ? { subtitle } : {}), ...(logo ? { logo } : {}), ...(d.pageNumbers === false ? { pageNumbers: false } : {}), ...(d.border === true ? { border: true } : {}), sections };
+  return { title: d.title.slice(0, 300), ...(subtitle ? { subtitle } : {}), ...(logo ? { logo } : {}), ...(d.pageNumbers === false ? { pageNumbers: false } : {}), ...(d.border === true ? { border: true } : {}), ...normalizeLayout(d), sections };
 }
 
 // ── Ready for the export ───────────────────────────────────────────────────────────────────────────
@@ -226,8 +228,20 @@ export function cleanForExport(doc: DocContent, kind: DocKind, knownImages?: Rea
     if (opts.anchors) out.anchor = index;
     sections.push(out);
   }
-  return { title: doc.title.trim() || "Untitled document", ...(doc.subtitle?.trim() ? { subtitle: doc.subtitle.trim() } : {}), ...(doc.logo ? { logo: doc.logo } : {}), ...(doc.pageNumbers === false ? { pageNumbers: false } : {}), ...(doc.border ? { border: true } : {}), sections };
+  return { title: doc.title.trim() || "Untitled document", ...(doc.subtitle?.trim() ? { subtitle: doc.subtitle.trim() } : {}), ...(doc.logo ? { logo: doc.logo } : {}), ...(doc.pageNumbers === false ? { pageNumbers: false } : {}), ...(doc.border ? { border: true } : {}), ...normalizeLayout(doc), sections };
 }
+
+/** All of a document's page settings (page numbers, frame, margin, number place and words), for carrying them over when the rest of a document is replaced. */
+export function pageSettingsOf(doc: DocContent): Partial<DocContent> {
+  const out: Record<string, unknown> = {};
+  if (doc.pageNumbers === false) out.pageNumbers = false;
+  if (doc.border) out.border = true;
+  Object.assign(out, normalizeLayout(doc));
+  return out as Partial<DocContent>;
+}
+
+/** The page settings with their keys, for code that must treat them as one group. */
+export const PAGE_SETTING_KEYS = ["pageNumbers", "border", ...PAGE_LAYOUT_KEYS] as const;
 
 // ── Sections ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -356,6 +370,7 @@ export function describeDocChange(before: DocContent, after: DocContent): string
   const things: string[] = [];
   if (before.title !== after.title) things.push("the title");
   if ((before.subtitle ?? "") !== (after.subtitle ?? "")) things.push("the subtitle");
+  if (!same(pageSettingsOf(before), pageSettingsOf(after))) things.push("the page settings");
   const added = after.sections.length - before.sections.length;
   if (added > 0) things.push(added === 1 ? "one new section" : `${added} new sections`);
   else if (added < 0) things.push(added === -1 ? "one section removed" : `${-added} sections removed`);
