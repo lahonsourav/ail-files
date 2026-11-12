@@ -1,25 +1,24 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { CONTENT_HEIGHT, PAGE_HEIGHT, PAGE_PADDING_PT, PAGE_PX, paginate } from "./docPaginate.js";
 
 // The page of a document as the file will draw it, shown in the editor. The host sends the PDF maker's own HTML (`data-s` on each section);
 // it is drawn inside a shadow root, so its styles cannot touch the editor's, and replaced in place when it changes, so the page does not
 // flash or lose its place. Nothing in it runs: scripts are taken out and only pictures that are inline are shown. Clicking a section
 // selects it; clicking the title, the logo or the space around picks the document itself.
 
-const PAGE_PX = 794; // A4 at 96 dpi: 595 pt
-const PAGE_MIN_HEIGHT = 1123;
-
-// The page's own styles come from the HTML; these only put it on a sheet of paper, mark the picked section and show where a page starts.
+// The page's own styles come from the HTML; these only put it on sheets of paper (cut into pages by docPaginate.ts) and mark the picked section.
 const SHEET_CSS = `
 :host { display: block; }
-.sheet { width: ${PAGE_PX}px; min-height: ${PAGE_MIN_HEIGHT}px; box-sizing: border-box; padding: 50pt; background: #fff; color: #1a1a1a; box-shadow: 0 1px 3px rgba(0,0,0,.18), 0 8px 24px rgba(0,0,0,.08); cursor: default; }
-.page { margin: 0; }
+.pages { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.sheet-wrap { display: flex; flex-direction: column; gap: 6px; margin-bottom: 30px; }
+.sheet { width: ${PAGE_PX}px; min-height: ${PAGE_HEIGHT}px; box-sizing: border-box; padding: ${PAGE_PADDING_PT}pt; background: #fff; color: #1a1a1a; box-shadow: 0 1px 3px rgba(0,0,0,.18), 0 8px 24px rgba(0,0,0,.08); cursor: default; }
+.sheet .page { display: flow-root; min-height: ${CONTENT_HEIGHT}px; margin: 0; }
+.pageno { font: 11px/1 sans-serif; color: #8a8a8a; text-align: center; width: ${PAGE_PX}px; }
 section[data-s] { cursor: pointer; border-radius: 3px; transition: background-color .15s, outline-color .15s; outline: 2px solid transparent; outline-offset: 8px; }
 section[data-s]:hover { background-color: rgba(37, 99, 235, .05); }
 section[data-s].picked { outline-color: #2563eb; }
-section.page-break { margin-top: 28pt; padding-top: 20pt; border-top: 1px dashed #b9b9b9; position: relative; }
-section.page-break::before { content: "New page"; position: absolute; top: -9px; left: 0; background: #fff; padding-right: 6px; font: 8pt sans-serif; color: #8a8a8a; }
 .doc-head { cursor: pointer; }
 `;
 
@@ -38,15 +37,26 @@ function parts(html: string): { css: string; body: string; bodyClass: string } {
   return { css, body: parsed.body.innerHTML, bodyClass: parsed.body.className };
 }
 
+// A section cut across sheets is several parts with the same number: all of them are marked. Returns the first, or null.
+function markPicked(root: ShadowRoot, selected: number | "doc"): HTMLElement | null {
+  root.querySelectorAll("section.picked").forEach((n) => n.classList.remove("picked"));
+  if (selected === "doc") return null;
+  const found = Array.from(root.querySelectorAll(`section[data-s="${selected}"]`)) as HTMLElement[];
+  found.forEach((p) => p.classList.add("picked"));
+  return found[0] ?? null;
+}
+
 export default function DocPage({ html, selected, onSelect, flash = false }: { html: string; selected: number | "doc"; onSelect: (target: number | "doc") => void; flash?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const shadow = useRef<ShadowRoot | null>(null);
   const outer = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
-  const [height, setHeight] = useState(PAGE_MIN_HEIGHT);
+  const [height, setHeight] = useState(PAGE_HEIGHT);
   const onSelectRef = useRef(onSelect);
+  const selectedRef = useRef(selected);
   useEffect(() => {
     onSelectRef.current = onSelect;
+    selectedRef.current = selected;
   });
 
   // Draw the page: in place, so it neither reloads nor jumps.
@@ -56,22 +66,40 @@ export default function DocPage({ html, selected, onSelect, flash = false }: { h
     shadow.current ??= el.attachShadow({ mode: "open" });
     const root = shadow.current;
     const { css, body, bodyClass } = parts(html);
-    root.innerHTML = `<style>${css}</style><style>${SHEET_CSS}</style><div class="sheet"><div class="page ${bodyClass}">${body}</div></div>`;
-    const sheet = root.querySelector(".sheet") as HTMLElement | null;
-    if (!sheet) return;
+    root.innerHTML = `<style>${css}</style><style>${SHEET_CSS}</style><div class="pages"></div>`;
+    const pagesEl = root.querySelector(".pages") as HTMLElement | null;
+    if (!pagesEl) return;
+    // The page as the HTML draws it, in one piece, kept aside: it is cut into sheets, and cut again if a picture loads and changes a height.
+    const source = document.createElement("div");
+    source.innerHTML = body;
     // The title, the subtitle and the logo are the document's own part.
-    root.querySelectorAll(".doc-logo, h1.title, p.subtitle").forEach((n) => n.classList.add("doc-head"));
+    source.querySelectorAll(".doc-logo, h1.title, p.subtitle").forEach((n) => n.classList.add("doc-head"));
+    let cuts = 0;
+    let alive = true;
+    const lay = () => {
+      const copy = source.cloneNode(true) as HTMLElement;
+      paginate(pagesEl, copy, bodyClass);
+      markPicked(root, selectedRef.current);
+      cuts++;
+      // A picture that was not ready changes the height once it is: cut again (twice at most, so it can never loop).
+      if (cuts <= 2) {
+        const waiting = Array.from(pagesEl.querySelectorAll("img")).filter((img) => !img.complete);
+        if (waiting.length > 0) Promise.all(waiting.map((img) => new Promise((r) => { img.addEventListener("load", r, { once: true }); img.addEventListener("error", r, { once: true }); }))).then(() => { if (alive) lay(); });
+      }
+    };
+    lay();
     const click = (e: Event) => {
       const t = e.target as HTMLElement | null;
       const sec = t?.closest?.("section[data-s]") as HTMLElement | null;
       onSelectRef.current(sec ? Number(sec.dataset.s) : "doc");
     };
     root.addEventListener("click", click);
-    const measure = () => setHeight(sheet.offsetHeight);
+    const measure = () => setHeight(pagesEl.offsetHeight);
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(sheet);
+    ro.observe(pagesEl);
     return () => {
+      alive = false;
       root.removeEventListener("click", click);
       ro.disconnect();
     };
@@ -81,11 +109,8 @@ export default function DocPage({ html, selected, onSelect, flash = false }: { h
   useLayoutEffect(() => {
     const root = shadow.current;
     if (!root) return;
-    root.querySelectorAll("section.picked").forEach((n) => n.classList.remove("picked"));
-    if (selected === "doc") return;
-    const sec = root.querySelector(`section[data-s="${selected}"]`) as HTMLElement | null;
+    const sec = markPicked(root, selected);
     if (!sec) return;
-    sec.classList.add("picked");
     const scroller = outer.current?.closest("[data-doc-scroll]") as HTMLElement | null;
     if (!scroller) return;
     const r = sec.getBoundingClientRect();

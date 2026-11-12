@@ -112,6 +112,9 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
   const phone = usePhone();
   const rootRef = useRef<HTMLDivElement>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // On a phone or tablet the page and the section's fields do not fit side by side: one at a time, the page scrolling inside its own area
+  // (the header, the tools and the section strip stay where they are), and this says which.
+  const [smallView, setSmallView] = useState<"page" | "fields">("page");
   const addMenuRef = useRef<HTMLDivElement>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -475,7 +478,7 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
   const section = typeof sel === "number" ? doc.sections[sel] : undefined;
 
   return (
-    <div ref={rootRef} className="min-h-dvh lg:h-dvh lg:min-h-0 lg:overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
+    <div ref={rootRef} className="h-dvh min-h-0 overflow-hidden flex flex-col bg-[var(--ds-bg-primary)] text-[var(--ds-text-primary)]">
       <header className={`${dim} flex items-center gap-2 px-3 sm:px-4 h-14 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)] shrink-0`}>
         {back}
         <h1 className="text-sm font-semibold truncate min-w-0 flex-1">{doc.title || `Untitled ${fileName === "PDF" ? "PDF" : "document"}`}</h1>
@@ -521,7 +524,7 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
 
       <main className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-[230px_minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)]">
         {/* Sections */}
-        <aside aria-label="Sections" className={`${dim} lg:border-r border-[var(--ds-border-muted)] lg:overflow-y-auto bg-[var(--ds-bg-surface)]`}>
+        <aside aria-label="Sections" className={`${dim} max-lg:shrink-0 lg:border-r border-[var(--ds-border-muted)] lg:overflow-y-auto bg-[var(--ds-bg-surface)]`}>
           <div
             ref={strip}
             onDragEnter={(e) => dragFrom !== null && e.preventDefault()}
@@ -608,9 +611,18 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
           </div>
         </aside>
 
+        {/* Phone and tablet: the page or the section's fields, one at a time. */}
+        <div role="tablist" aria-label="What to show" className={`${dim} lg:hidden shrink-0 flex gap-1 p-1.5 border-b border-[var(--ds-border-muted)] bg-[var(--ds-bg-surface)]`}>
+          {(["page", "fields"] as const).map((v) => (
+            <button key={v} type="button" role="tab" aria-selected={smallView === v} onClick={() => setSmallView(v)} className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${smallView === v ? "bg-[var(--ds-bg-elevated)] text-[var(--ds-text-primary)]" : "text-[var(--ds-text-muted)]"}`}>
+              {v === "page" ? "Page" : sel === "doc" ? "Title and settings" : "Edit section"}
+            </button>
+          ))}
+        </div>
+
         {/* The page */}
-        <section aria-label="Page preview" className="min-w-0 min-h-0 flex flex-col">
-          <div data-doc-scroll className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 bg-[var(--ds-bg-elevated)]">
+        <section aria-label="Page preview" className={`min-w-0 min-h-0 flex flex-col max-lg:order-last ${smallView === "page" ? "max-lg:flex-1" : ""}`}>
+          <div data-doc-scroll className={`flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 bg-[var(--ds-bg-elevated)] ${smallView === "fields" ? "max-lg:hidden" : ""}`}>
             <div className="mx-auto w-full max-w-[794px] relative">
               {html !== null ? <DocPage html={html} selected={sel} onSelect={setSelected} flash={flash} /> : <div className="aspect-[210/297] rounded-sm bg-[var(--ds-bg-surface)] flex items-center justify-center text-xs text-[var(--ds-text-muted)]">Drawing your page…</div>}
               {(asking || voicePhase === "hearing" || voicePhase === "speaking") && (
@@ -647,7 +659,7 @@ export default function DocEditor({ kind, initialDoc, initialVersion, host, pict
         </section>
 
         {/* The fields */}
-        <aside aria-label="Section fields" className={`${dim} lg:border-l border-[var(--ds-border-muted)] min-h-0 flex flex-col bg-[var(--ds-bg-surface)]`}>
+        <aside aria-label="Section fields" className={`${dim} lg:border-l border-[var(--ds-border-muted)] min-h-0 flex flex-col bg-[var(--ds-bg-surface)] max-lg:flex-1 ${smallView === "page" ? "max-lg:hidden" : ""}`}>
           <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
             {sel === "doc" || !section ? (
               <div className="space-y-3">
